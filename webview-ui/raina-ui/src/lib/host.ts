@@ -22,7 +22,9 @@ function ensureListener() {
 
 export type HostReq =
   | { type: "workspace:list" }
-  | { type: "workspace:create"; payload: { name: string; description?: string; created_by?: string } };
+  | { type: "workspace:create"; payload: { name: string; description?: string; created_by?: string } }
+  | { type: "workspace:get"; payload: { id: string } }                // NEW
+  | { type: "discovery:start"; payload: { workspaceId: string; options?: any } }; 
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");

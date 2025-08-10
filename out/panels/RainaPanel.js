@@ -78,6 +78,20 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // NEW
+                    case "workspace:get": {
+                        const { id } = payload ?? {};
+                        const data = await RainaWorkspaceService_1.RainaWorkspaceService.get(id);
+                        reply(true, data);
+                        break;
+                    }
+                    // NEW
+                    case "discovery:start": {
+                        const { workspaceId, options } = payload ?? {};
+                        const data = await RainaWorkspaceService_1.RainaWorkspaceService.startDiscovery(workspaceId, options);
+                        reply(true, data);
+                        break;
+                    }
                     default:
                         reply(false, undefined, `Unhandled message type: ${type}`);
                 }
