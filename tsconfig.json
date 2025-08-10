@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "target": "ES2022",
+    "outDir": "out",
+    "lib": ["ES2022"],
+    "sourceMap": true,
+    "rootDir": "src",
+    "strict": true,
+    "types": ["node", "vscode", "mocha"] // ✅ ADD THIS LINE
+  },
+  "include": [
+    "src",
+    "src/types/global.d.ts"
+  ],
+  "exclude": [
+    "webview-ui",
+    "node_modules",
+    "media"
+  ]
+}
