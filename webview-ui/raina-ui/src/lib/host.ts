@@ -23,8 +23,15 @@ function ensureListener() {
 export type HostReq =
   | { type: "workspace:list" }
   | { type: "workspace:create"; payload: { name: string; description?: string; created_by?: string } }
-  | { type: "workspace:get"; payload: { id: string } }                // NEW
-  | { type: "discovery:start"; payload: { workspaceId: string; options?: any } }; 
+  | { type: "workspace:get"; payload: { id: string } }
+  | { type: "workspace:update"; payload: { id: string; patch: { name?: string; description?: string } } }
+  // NEW
+  | { type: "artifact:get"; payload: { workspaceId: string; artifactId: string } }
+  | { type: "artifact:head"; payload: { workspaceId: string; artifactId: string } }
+  | { type: "artifact:patch"; payload: { workspaceId: string; artifactId: string; etag: string; patch: any[]; provenance?: any } }
+  | { type: "artifact:replace"; payload: { workspaceId: string; artifactId: string; etag: string; dataPayload: any; provenance?: any } }
+  | { type: "artifact:delete"; payload: { workspaceId: string; artifactId: string } }
+  | { type: "artifact:history"; payload: { workspaceId: string; artifactId: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");

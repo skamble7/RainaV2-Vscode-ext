@@ -1,24 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/types/workspace.ts
 export type Artifact = {
   artifact_id: string;
   kind: string;
   name: string;
   data: any;
-  version?: any;
-  created_at?: any;
-  updated_at?: any;
-  deleted_at?: any;
+  version?: number | string;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
   provenance?: any;
-};
-
-export type WorkspaceSummary = {
-  id: string;
-  name: string;
-  description?: string | null;
-  created_by?: string | null;
-  created_at: string;
-  updated_at: string;
 };
 
 export type WorkspaceDetail = {
@@ -29,10 +19,19 @@ export type WorkspaceDetail = {
     name: string;
     description?: string | null;
     created_by?: string | null;
-    created_at: any;
-    updated_at: any;
+    created_at: string;
+    updated_at: string;
   };
   artifacts: Artifact[];
-  created_at?: any;
-  updated_at?: any;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkspaceSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
 };

@@ -68,6 +68,7 @@ class RainaPanel {
             const reply = (ok, data, error) => this.panel.webview.postMessage({ token, ok, data, error });
             try {
                 switch (type) {
+                    // ---- Workspace ----
                     case "workspace:list": {
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.list();
                         reply(true, data);
@@ -78,18 +79,66 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // NEW
                     case "workspace:get": {
                         const { id } = payload ?? {};
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.get(id);
                         reply(true, data);
                         break;
                     }
-                    // NEW
+                    case "workspace:update": {
+                        const { id, patch } = payload ?? {};
+                        const data = await RainaWorkspaceService_1.RainaWorkspaceService.update(id, patch);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---- Discovery (stubbed to your discovery service) ----
                     case "discovery:start": {
                         const { workspaceId, options } = payload ?? {};
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.startDiscovery(workspaceId, options);
                         reply(true, data);
+                        break;
+                    }
+                    // ---- Artifacts (ETag-aware) ----
+                    case "artifact:get": {
+                        const { workspaceId, artifactId } = payload ?? {};
+                        const out = await RainaWorkspaceService_1.RainaWorkspaceService.getArtifact(workspaceId, artifactId);
+                        reply(true, out);
+                        break;
+                    }
+                    case "artifact:head": {
+                        const { workspaceId, artifactId } = payload ?? {};
+                        const etag = await RainaWorkspaceService_1.RainaWorkspaceService.headArtifact(workspaceId, artifactId);
+                        reply(true, { etag });
+                        break;
+                    }
+                    case "artifact:patch": {
+                        const { workspaceId, artifactId, etag, patch, provenance } = payload ?? {};
+                        const out = await RainaWorkspaceService_1.RainaWorkspaceService.patchArtifact(workspaceId, artifactId, etag, patch, provenance);
+                        reply(true, out);
+                        break;
+                    }
+                    case "artifact:replace": {
+                        const { workspaceId, artifactId, etag, dataPayload, provenance } = payload ?? {};
+                        const out = await RainaWorkspaceService_1.RainaWorkspaceService.replaceArtifact(workspaceId, artifactId, etag, dataPayload, provenance);
+                        reply(true, out);
+                        break;
+                    }
+                    case "artifact:delete": {
+                        const { workspaceId, artifactId } = payload ?? {};
+                        await RainaWorkspaceService_1.RainaWorkspaceService.deleteArtifact(workspaceId, artifactId);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    case "artifact:history": {
+                        const { workspaceId, artifactId } = payload ?? {};
+                        const data = await RainaWorkspaceService_1.RainaWorkspaceService.history(workspaceId, artifactId);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---- Misc / dev pings ----
+                    case "hello": {
+                        // Optional: acknowledge hello from webview boot
+                        reply(true, { ok: true });
                         break;
                     }
                     default:
@@ -97,7 +146,8 @@ class RainaPanel {
                 }
             }
             catch (e) {
-                reply(false, undefined, e?.message ?? "Unknown error");
+                const msg = e?.message ?? String(e) ?? "Unknown error";
+                reply(false, undefined, msg);
             }
         });
     }

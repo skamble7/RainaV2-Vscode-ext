@@ -5,108 +5,161 @@ import * as fs from "fs";
 import { RainaWorkspaceService } from "../services/RainaWorkspaceService";
 
 export class RainaPanel {
-    public static currentPanel: RainaPanel | undefined;
-    private readonly panel: vscode.WebviewPanel;
-    private readonly extensionUri: vscode.Uri;
+  public static currentPanel: RainaPanel | undefined;
+  private readonly panel: vscode.WebviewPanel;
+  private readonly extensionUri: vscode.Uri;
 
-    public static createOrShow(extensionUri: vscode.Uri) {
-        const column = vscode.ViewColumn.One;
+  public static createOrShow(extensionUri: vscode.Uri) {
+    const column = vscode.ViewColumn.One;
 
-        if (RainaPanel.currentPanel) {
-            RainaPanel.currentPanel.panel.reveal(column);
-            return;
+    if (RainaPanel.currentPanel) {
+      RainaPanel.currentPanel.panel.reveal(column);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
+    });
+
+    RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
+  }
+
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+    this.panel = panel;
+    this.extensionUri = extensionUri;
+    this.panel.webview.html = this.getHtmlForWebview(panel.webview);
+    this.setMessageListener();
+    this.panel.onDidDispose(() => (RainaPanel.currentPanel = undefined));
+  }
+
+  private setMessageListener() {
+    this.panel.webview.onDidReceiveMessage(async (message) => {
+      const { type, token, payload } = message ?? {};
+      const reply = (ok: boolean, data?: any, error?: string) =>
+        this.panel.webview.postMessage({ token, ok, data, error });
+
+      try {
+        switch (type) {
+          // ---- Workspace ----
+          case "workspace:list": {
+            const data = await RainaWorkspaceService.list();
+            reply(true, data);
+            break;
+          }
+          case "workspace:create": {
+            const data = await RainaWorkspaceService.create(payload);
+            reply(true, data);
+            break;
+          }
+          case "workspace:get": {
+            const { id } = payload ?? {};
+            const data = await RainaWorkspaceService.get(id);
+            reply(true, data);
+            break;
+          }
+          case "workspace:update": {
+            const { id, patch } = payload ?? {};
+            const data = await RainaWorkspaceService.update(id, patch);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Discovery (stubbed to your discovery service) ----
+          case "discovery:start": {
+            const { workspaceId, options } = payload ?? {};
+            const data = await RainaWorkspaceService.startDiscovery(workspaceId, options);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Artifacts (ETag-aware) ----
+          case "artifact:get": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const out = await RainaWorkspaceService.getArtifact(workspaceId, artifactId);
+            reply(true, out);
+            break;
+          }
+          case "artifact:head": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const etag = await RainaWorkspaceService.headArtifact(workspaceId, artifactId);
+            reply(true, { etag });
+            break;
+          }
+          case "artifact:patch": {
+            const { workspaceId, artifactId, etag, patch, provenance } = payload ?? {};
+            const out = await RainaWorkspaceService.patchArtifact(workspaceId, artifactId, etag, patch, provenance);
+            reply(true, out);
+            break;
+          }
+          case "artifact:replace": {
+            const { workspaceId, artifactId, etag, dataPayload, provenance } = payload ?? {};
+            const out = await RainaWorkspaceService.replaceArtifact(workspaceId, artifactId, etag, dataPayload, provenance);
+            reply(true, out);
+            break;
+          }
+          case "artifact:delete": {
+            const { workspaceId, artifactId } = payload ?? {};
+            await RainaWorkspaceService.deleteArtifact(workspaceId, artifactId);
+            reply(true, { ok: true });
+            break;
+          }
+          case "artifact:history": {
+            const { workspaceId, artifactId } = payload ?? {};
+            const data = await RainaWorkspaceService.history(workspaceId, artifactId);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Misc / dev pings ----
+          case "hello": {
+            // Optional: acknowledge hello from webview boot
+            reply(true, { ok: true });
+            break;
+          }
+
+          default:
+            reply(false, undefined, `Unhandled message type: ${type}`);
         }
+      } catch (e: any) {
+        const msg = e?.message ?? String(e) ?? "Unknown error";
+        reply(false, undefined, msg);
+      }
+    });
+  }
 
-        const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
-            enableScripts: true,
-            localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
-        });
+  private getHtmlForWebview(webview: vscode.Webview): string {
+    // 1) Try Vite-internal path (.vite/manifest.json), 2) fallback to manifest.json at root
+    const manifestCandidates = [
+      path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
+      path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
+    ];
 
-        RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
+    const manifestPath = manifestCandidates.find(fs.existsSync);
+    if (!manifestPath) {
+      vscode.window.showErrorMessage("Vite build not found. Run `npm run build` in raina-ui.");
+      return "<html><body><h3>Build missing</h3></body></html>";
     }
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-        this.panel = panel;
-        this.extensionUri = extensionUri;
-        this.panel.webview.html = this.getHtmlForWebview(panel.webview);
-        this.setMessageListener();
-        this.panel.onDidDispose(() => (RainaPanel.currentPanel = undefined));
-    }
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-    private setMessageListener() {
-        this.panel.webview.onDidReceiveMessage(async (message) => {
-            const { type, token, payload } = message ?? {};
-            const reply = (ok: boolean, data?: any, error?: string) =>
-                this.panel.webview.postMessage({ token, ok, data, error });
+    // Some manifests key by "index.html", others by entry like "src/main.tsx"
+    const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
+    const entry = manifest[entryKey];
 
-            try {
-                switch (type) {
-                    case "workspace:list": {
-                        const data = await RainaWorkspaceService.list();
-                        reply(true, data);
-                        break;
-                    }
-                    case "workspace:create": {
-                        const data = await RainaWorkspaceService.create(payload);
-                        reply(true, data);
-                        break;
-                    }
-                    // NEW
-                    case "workspace:get": {
-                        const { id } = payload ?? {};
-                        const data = await RainaWorkspaceService.get(id);
-                        reply(true, data);
-                        break;
-                    }
-                    // NEW
-                    case "discovery:start": {
-                        const { workspaceId, options } = payload ?? {};
-                        const data = await RainaWorkspaceService.startDiscovery(workspaceId, options);
-                        reply(true, data);
-                        break;
-                    }
+    const scriptFile: string = entry.file;              // e.g. "assets/index-abc123.js"
+    const cssFile: string | undefined = entry.css?.[0]; // e.g. "assets/index-abc123.css"
 
-                    default:
-                        reply(false, undefined, `Unhandled message type: ${type}`);
-                }
-            } catch (e: any) {
-                reply(false, undefined, e?.message ?? "Unknown error");
-            }
-        });
-    }
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", scriptFile)
+    );
+    const styleUri = cssFile
+      ? webview.asWebviewUri(
+          vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", cssFile)
+        )
+      : undefined;
 
-    private getHtmlForWebview(webview: vscode.Webview): string {
-        // 1) Try Vite-internal path (.vite/manifest.json), 2) fallback to manifest.json at root
-        const manifestCandidates = [
-            path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
-            path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
-        ];
-
-        const manifestPath = manifestCandidates.find(fs.existsSync);
-        if (!manifestPath) {
-            vscode.window.showErrorMessage("Vite build not found. Run `npm run build` in raina-ui.");
-            return "<html><body><h3>Build missing</h3></body></html>";
-        }
-
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-
-        // Some manifests key by "index.html", others by entry like "src/main.tsx"
-        const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
-        const entry = manifest[entryKey];
-
-        const scriptFile: string = entry.file;              // e.g. "assets/index-abc123.js"
-        const cssFile: string | undefined = entry.css?.[0]; // e.g. "assets/index-abc123.css"
-
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", scriptFile)
-        );
-        const styleUri = cssFile
-            ? webview.asWebviewUri(
-                vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", cssFile)
-            )
-            : undefined;
-
-        return `<!doctype html>
+    return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -125,7 +178,5 @@ ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
   <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
-
-    }
-
+  }
 }
