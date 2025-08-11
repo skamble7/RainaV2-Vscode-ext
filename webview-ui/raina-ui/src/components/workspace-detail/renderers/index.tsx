@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { JSX } from "react";
-import DocumentSwitch from "../renderers/kinds/DocumentSwitch";
-import ContextMapRenderer from "./kinds/ContextMapRenderer";
-import ServiceContractRenderer from "./kinds/ServiceContractRenderer";
-import SequenceRenderer from "./kinds/SequenceRenderer";
+import DocumentSwitch from "./kinds/DocumentSwitch";           // cam.document (+ doc_type back-compat)
+import ContextMapRenderer from "./kinds/ContextMapRenderer";   // cam.context_map
+import CapabilityModelRenderer from "./kinds/CapabilityModelRenderer"; // cam.capability_model
+import ServiceContractRenderer from "./kinds/ServiceContractRenderer"; // cam.service_contract
+import SequenceRenderer from "./kinds/SequenceRenderer";       // cam.sequence_diagram
+import ErdRenderer from "./kinds/ErdRenderer";                 // cam.erd
+import AdrIndexRenderer from "./kinds/AdrIndexRenderer";       // cam.adr_index
 import JsonFallback from "./kinds/JsonFallback";
 
 type Props = {
@@ -13,15 +16,14 @@ type Props = {
   onChange: (updater: (draftData: any) => void) => void;
 };
 
-// Map by canonical kind. cam.document is routed via DocumentSwitch by data shape.
 const map: Record<string, (p: Props) => JSX.Element> = {
   "cam.document": (p) => <DocumentSwitch {...p} />,
   "cam.context_map": (p) => <ContextMapRenderer {...p} />,
+  "cam.capability_model": (p) => <CapabilityModelRenderer {...p} />,
   "cam.service_contract": (p) => <ServiceContractRenderer {...p} />,
   "cam.sequence_diagram": (p) => <SequenceRenderer {...p} />,
-  // "cam.capability_model": (p) => <CapabilityModelRenderer {...p} />,
-  // "cam.erd": (p) => <ErdRenderer {...p} />,
-  "cam.adr_index": (p) => <JsonFallback {...p} />, // placeholder
+  "cam.erd": (p) => <ErdRenderer {...p} />,
+  "cam.adr_index": (p) => <AdrIndexRenderer {...p} />,
 };
 
 export function ArtifactRenderer(props: Props) {
