@@ -21,14 +21,13 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   useEffect(() => { load(workspaceId); }, [workspaceId, load]);
 
   return (
-    // Full-screen flex column. Header + filters are non-scrolling. Body is the scroller area.
     <div className="w-screen h-screen flex flex-col bg-neutral-950 text-neutral-100">
-      {/* Sticky header wrapper */}
+      {/* Sticky header */}
       <div className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur shrink-0">
         <HeaderBar onBack={onBack} />
       </div>
 
-      {/* Filter row (non-sticky, but outside the scrolling grid so it stays fixed) */}
+      {/* Filter row */}
       <div className="border-b border-neutral-800 shrink-0">
         <TopFilterRow />
       </div>
@@ -39,7 +38,7 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   );
 }
 
-/* ===== Header ===== */
+/* ===== Header (single-row: back+title | centered tabs | actions) ===== */
 function HeaderBar({ onBack }: { onBack: () => void }) {
   const { detail, loading, tab, setTab, updateWorkspaceMeta } = useWorkspaceDetailStore();
   const [editing, setEditing] = React.useState(false);
@@ -53,69 +52,49 @@ function HeaderBar({ onBack }: { onBack: () => void }) {
     }
   }, [detail, editing]);
 
-  // NOTE: no sticky wrapper here; the parent provides stickiness
   return (
-    <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center gap-3">
-      <Button variant="ghost" onClick={onBack}>← Back</Button>
+    <div className="relative max-w-[1400px] mx-auto px-4 py-1.5 flex items-center">
+      {/* Left: Back + Title / Inline edit */}
+      <div className="flex items-center gap-3 min-w-0">
+        <Button variant="ghost" onClick={onBack}>← Back</Button>
 
-      <div className="flex-1 min-w-0">
-        {editing ? (
-          <div className="flex items-center gap-2">
-            <Input className="max-w-md" value={name} onChange={(e) => setName(e.target.value)} />
-            <Input placeholder="Description" value={desc} onChange={(e) => setDesc(e.target.value)} />
-            <Button
-              size="sm"
-              onClick={async () => { await updateWorkspaceMeta({ name, description: desc }); setEditing(false); }}
+        <div className="min-w-0">
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <Input
+                className="h-8 max-w-xs"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={async () => {
+                  await updateWorkspaceMeta({ name, description: desc });
+                  setEditing(false);
+                }}
+              >
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="text-2xl font-semibold truncate max-w-[40vw]"
+              title={detail?.workspace?.name}
             >
-              Save
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-          </div>
-        ) : (
-          <>
-            <div className="text-xl font-semibold truncate">
               {loading ? "Loading…" : detail?.workspace?.name ?? "Workspace"}
             </div>
-            <div className="text-sm text-neutral-400 truncate">{detail?.workspace?.description}</div>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button>Discover</Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Start discovery</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => {/* start default discovery */}}>Default Pack</DropdownMenuItem>
-            <DropdownMenuItem disabled>Custom (soon)</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline">Generate Guidance</Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Architecture Guide</DropdownMenuItem>
-            <DropdownMenuItem>Dev Hand-off</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost">Export</Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Bundle (.zip)</DropdownMenuItem>
-            <DropdownMenuItem>Markdown</DropdownMenuItem>
-            <DropdownMenuItem>JSON</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setEditing(true)}>Edit name/description</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Tabs row */}
-      <div className="w-full mt-2">
+      {/* Center: Tabs (absolutely centered to stay true-center) */}
+      <div className="absolute left-1/2 -translate-x-1/2">
         <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-          <TabsList>
+          <TabsList className="mx-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
             <TabsTrigger value="conversations">Conversations</TabsTrigger>
@@ -124,11 +103,63 @@ function HeaderBar({ onBack }: { onBack: () => void }) {
           </TabsList>
         </Tabs>
       </div>
+
+      {/* Right: grouped actions, docked */}
+      <div className="ml-auto shrink-0">
+        <div className="flex items-center rounded-xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-sm">
+          {/* Discover */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="rounded-none px-4">
+                Discover
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Start discovery</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => { /* start default discovery */ }}>Default Pack</DropdownMenuItem>
+              <DropdownMenuItem disabled>Custom (soon)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <div className="w-px h-6 bg-neutral-800" />
+
+          {/* Guide */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="rounded-none px-4">
+                Guide
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>Architecture Guide</DropdownMenuItem>
+              <DropdownMenuItem>Dev Hand-off</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <div className="w-px h-6 bg-neutral-800" />
+
+          {/* Export */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="rounded-none px-4">
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>Bundle (.zip)</DropdownMenuItem>
+              <DropdownMenuItem>Markdown</DropdownMenuItem>
+              <DropdownMenuItem>JSON</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setEditing(true)}>Edit name/description</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ===== Top filter row (replaces left rail) ===== */
+/* ===== Top filter row ===== */
 function TopFilterRow() {
   const { setQuery, toggleKind, toggleDocType, counts } = useWorkspaceDetailStore();
   const c = counts();
@@ -162,7 +193,7 @@ function TopFilterRow() {
   );
 }
 
-/* ===== Two-column body (right pane scrolls; min-h-0 everywhere) ===== */
+/* ===== Two-column body ===== */
 function BodyTwoColumn() {
   const {
     tab, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
@@ -182,10 +213,9 @@ function BodyTwoColumn() {
   const list = filteredArtifacts();
 
   return (
-    // Fill viewport area under the header/filters and allow children to shrink
     <div className="flex-1 overflow-hidden min-h-0">
       <div className="max-w-[1400px] mx-auto w-full h-full px-4 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 min-h-0">
-        {/* Left column (own scrollbar) */}
+        {/* Left column */}
         <div className="h-full overflow-auto pr-2 min-h-0">
           {loading && list.length === 0 ? (
             <div className="text-neutral-400 text-sm">Loading artifacts…</div>
@@ -228,7 +258,7 @@ function BodyTwoColumn() {
           )}
         </div>
 
-        {/* Right column — the ONLY scroller for details */}
+        {/* Right column */}
         <div className="h-full overflow-auto min-h-0">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 h-full min-h-0">
             <ArtifactView />
