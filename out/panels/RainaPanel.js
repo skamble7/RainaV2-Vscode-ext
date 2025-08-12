@@ -135,9 +135,15 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- Draw.io panel (NEW) ----
+                    case "raina.openDrawio": {
+                        const { title, xml } = payload ?? {};
+                        this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
+                        // No reply needed; this is a fire-and-forget action
+                        break;
+                    }
                     // ---- Misc / dev pings ----
                     case "hello": {
-                        // Optional: acknowledge hello from webview boot
                         reply(true, { ok: true });
                         break;
                     }
@@ -150,6 +156,106 @@ class RainaPanel {
                 reply(false, undefined, msg);
             }
         });
+    }
+    // Opens a new VS Code tab with diagrams.net embedded and round-trips XML back here.
+    openDrawioPanel(title, xml) {
+        const panel = vscode.window.createWebviewPanel("rainaDrawio", title, vscode.ViewColumn.Active, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+        });
+        panel.webview.html = this.getDrawioHtml(panel.webview, xml);
+        // Forward saves back to the main webview so UI can persist to artifact-service
+        panel.webview.onDidReceiveMessage((msg) => {
+            if (msg?.type === "drawio.saved") {
+                const updatedXml = String(msg.xml ?? "");
+                // Forward to main webview; UI can decide how to persist
+                this.panel.webview.postMessage({
+                    type: "drawio.saved",
+                    payload: { title, xml: updatedXml },
+                });
+                vscode.window.showInformationMessage("Draw.io diagram exported.");
+            }
+            else if (msg?.type === "drawio.requestClose") {
+                panel.dispose();
+            }
+        });
+    }
+    getDrawioHtml(webview, xml) {
+        const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
+        const MIN_XML = `<mxfile modified="${new Date().toISOString()}" agent="raina" version="20.6.3">
+  <diagram name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram>
+</mxfile>`;
+        const xmlForLoad = hasMx ? xml : MIN_XML;
+        const xmlB64 = Buffer.from(xmlForLoad, "utf8").toString("base64");
+        const EMBED_URL = "https://embed.diagrams.net/?embed=1&ui=atlas&spin=1&proto=json&saveandexit=1&noexit=1";
+        const csp = `
+    default-src 'none';
+    img-src ${webview.cspSource} https: data:;
+    frame-src https://embed.diagrams.net https://app.diagrams.net;
+    script-src ${webview.cspSource} 'unsafe-inline';
+    style-src ${webview.cspSource} 'unsafe-inline';
+    connect-src https:;
+    font-src https: data:;
+  `.replace(/\n/g, " ");
+        return `<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Draw.io</title>
+  <style>html,body,iframe{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:#0a0a0a}</style>
+</head>
+<body>
+  <iframe id="editor" src="${EMBED_URL}" allow="clipboard-read; clipboard-write"></iframe>
+  <script>
+    const vscode = acquireVsCodeApi();
+    const editor = document.getElementById("editor");
+
+    function postToEmbed(message) {
+      editor.contentWindow.postMessage(JSON.stringify(message), "*");
+    }
+
+    // For visibility when debugging
+    function dbg(kind, data) {
+      vscode.postMessage({ type: "drawio.debug", kind, data });
+    }
+
+    // Some builds send 'init', some send 'ready' — handle both
+    window.addEventListener("message", (event) => {
+      try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (!data || !data.event) return;
+
+        if (data.event === "init" || data.event === "ready") {
+          // Stop spinner by loading valid XML
+          postToEmbed({ action: "load", xml: atob("${xmlB64}") });
+          dbg("loaded", { len: ${xmlForLoad.length} });
+        }
+
+        if (data.event === "save") {
+          postToEmbed({ action: "export", format: "xml" });
+        }
+
+        if (data.event === "export" && data.data) {
+          vscode.postMessage({ type: "drawio.saved", xml: data.data });
+        }
+
+        if (data.event === "exit") {
+          vscode.postMessage({ type: "drawio.requestClose" });
+        }
+      } catch (e) {
+        dbg("parse_error", String(e));
+      }
+    });
+
+    // Optional nudge in case 'init' never arrives (rare)
+    editor.addEventListener("load", () => {
+      setTimeout(() => postToEmbed({ action: "status" }), 1500);
+    });
+  </script>
+</body>
+</html>`;
     }
     getHtmlForWebview(webview) {
         // 1) Try Vite-internal path (.vite/manifest.json), 2) fallback to manifest.json at root
