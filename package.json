@@ -9,11 +9,45 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:raina.open",
+    "onView:rainaLauncher"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "raina.open", "title": "RAINA: Open" }
+      {
+        "command": "raina.open",
+        "title": "RAINA: Open",
+        "category": "Raina",
+        "icon": {
+          "dark": "media/raina-ui/raina-icon.svg",
+          "light": "media/raina-ui/raina-icon.svg"
+        }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "raina",
+          "title": "Raina",
+          "icon": "media/raina-ui/raina-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "raina": [
+        {
+          "id": "rainaLauncher",
+          "name": "Raina"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "rainaLauncher",
+        "contents": "Launch the assistant.\n\n[Open Raina](command:raina.open)"
+      }
     ]
   },
   "scripts": {

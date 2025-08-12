@@ -178,17 +178,24 @@ exports.RainaWorkspaceService = {
         return data;
     },
     // ----------------- Discovery -----------------
-    async startDiscovery(workspaceId, options) {
-        const res = await fetch(`${DISCOVERY_BASE}/discover/start`, {
+    async startDiscovery(workspaceId, requestBody) {
+        const url = `${DISCOVERY_BASE}/discover/${workspaceId}`;
+        // No extra fields. Send exactly what the UI built:
+        const bodyJson = JSON.stringify(requestBody ?? {});
+        // Debug
+        console.log("[EXT] discovery:start →", url);
+        console.log("[EXT] discovery:start → body\n", bodyJson);
+        const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspace_id: workspaceId, ...(options ?? {}) }),
+            body: bodyJson,
         });
+        const text = await res.text().catch(() => "");
+        console.log("[EXT] discovery:start ←", res.status, res.statusText);
+        console.log("[EXT] discovery:start ← body\n", text);
         if (!res.ok)
-            throw new Error(`Failed to start discovery (${res.status})`);
-        const data = await json(res); // e.g. { runId, status, ... }
-        console.log("[EXT] discovery:start", { workspaceId, ...data });
-        return data;
+            throw new Error(`Failed to start discovery (${res.status}) ${text}`);
+        return text ? JSON.parse(text) : undefined;
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

@@ -1,7 +1,7 @@
 // src/components/workspace-detail/WorkspaceDetail.tsx
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,18 +13,27 @@ import { Search } from "lucide-react";
 import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
 import ArtifactView from "./artifact/ArtifactView";
 
+// NEW: discover drawer + toaster
+import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
+import { Toaster } from "@/components/ui/toaster";
+
 /* ===== Root ===== */
 type Props = { workspaceId: string; onBack: () => void };
 
 export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   const { load } = useWorkspaceDetailStore();
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+
   useEffect(() => { load(workspaceId); }, [workspaceId, load]);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-neutral-950 text-neutral-100">
+      {/* Toasts */}
+      <Toaster />
+
       {/* Sticky header */}
       <div className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur shrink-0">
-        <HeaderBar onBack={onBack} />
+        <HeaderBar onBack={onBack} onOpenDiscover={() => setDiscoverOpen(true)} />
       </div>
 
       {/* Filter row */}
@@ -34,12 +43,19 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
 
       {/* Main body */}
       <BodyTwoColumn />
+
+      {/* Discover Drawer */}
+      <DiscoverArtifactsDrawer
+        workspaceId={workspaceId}
+        open={discoverOpen}
+        onOpenChange={setDiscoverOpen}
+      />
     </div>
   );
 }
 
 /* ===== Header (single-row: back+title | centered tabs | actions) ===== */
-function HeaderBar({ onBack }: { onBack: () => void }) {
+function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDiscover: () => void }) {
   const { detail, loading, tab, setTab, updateWorkspaceMeta } = useWorkspaceDetailStore();
   const [editing, setEditing] = React.useState(false);
   const [name, setName] = React.useState(detail?.workspace?.name ?? "");
@@ -107,19 +123,10 @@ function HeaderBar({ onBack }: { onBack: () => void }) {
       {/* Right: grouped actions, docked */}
       <div className="ml-auto shrink-0">
         <div className="flex items-center rounded-xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-sm">
-          {/* Discover */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="rounded-none px-4">
-                Discover
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Start discovery</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => { /* start default discovery */ }}>Default Pack</DropdownMenuItem>
-              <DropdownMenuItem disabled>Custom (soon)</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Discover — now opens the right-side drawer */}
+          <Button variant="ghost" className="rounded-none px-4" onClick={onOpenDiscover}>
+            Discover
+          </Button>
 
           <div className="w-px h-6 bg-neutral-800" />
 
