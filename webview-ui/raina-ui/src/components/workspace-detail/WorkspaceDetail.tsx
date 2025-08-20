@@ -13,6 +13,9 @@ import { Search } from "lucide-react";
 import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
 import ArtifactView from "./artifact/ArtifactView";
 
+// NEW: Runs tab
+import RunsTab from "@/components/runs/RunsTab";
+
 // NEW: discover drawer + toaster
 import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,7 +24,7 @@ import { Toaster } from "@/components/ui/toaster";
 type Props = { workspaceId: string; onBack: () => void };
 
 export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
-  const { load } = useWorkspaceDetailStore();
+  const { load, tab } = useWorkspaceDetailStore();
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
   useEffect(() => { load(workspaceId); }, [workspaceId, load]);
@@ -36,13 +39,15 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
         <HeaderBar onBack={onBack} onOpenDiscover={() => setDiscoverOpen(true)} />
       </div>
 
-      {/* Filter row */}
-      <div className="border-b border-neutral-800 shrink-0">
-        <TopFilterRow />
-      </div>
+      {/* Filter row — only for Artifacts tab */}
+      {tab === "artifacts" && (
+        <div className="border-b border-neutral-800 shrink-0">
+          <TopFilterRow />
+        </div>
+      )}
 
       {/* Main body */}
-      <BodyTwoColumn />
+      <BodyTwoColumn workspaceId={workspaceId} />
 
       {/* Discover Drawer */}
       <DiscoverArtifactsDrawer
@@ -201,22 +206,43 @@ function TopFilterRow() {
 }
 
 /* ===== Two-column body ===== */
-function BodyTwoColumn() {
+function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
   const {
     tab, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
   } = useWorkspaceDetailStore();
 
-  if (tab !== "artifacts") {
+  // Non-artifact tabs
+  if (tab === "overview") {
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
-        {tab === "overview" && <>Overview coming up…</>}
-        {tab === "conversations" && <>Conversations (agent threads) coming soon…</>}
-        {tab === "runs" && <>Runs list coming soon…</>}
-        {tab === "timeline" && <>Timeline coming soon…</>}
+        Overview coming up…
+      </div>
+    );
+  }
+  if (tab === "conversations") {
+    return (
+      <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
+        Conversations (agent threads) coming soon…
+      </div>
+    );
+  }
+  if (tab === "runs") {
+    // FULL-BLEED runs UI (no centered container)
+    return (
+      <div className="flex-1 min-h-0">
+        <RunsTab workspaceId={workspaceId} />
+      </div>
+    );
+  }
+  if (tab === "timeline") {
+    return (
+      <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
+        Timeline coming soon…
       </div>
     );
   }
 
+  // Default: artifacts two-column
   const list = filteredArtifacts();
 
   return (

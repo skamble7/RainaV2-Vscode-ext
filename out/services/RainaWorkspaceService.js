@@ -177,10 +177,10 @@ exports.RainaWorkspaceService = {
         console.log("[EXT] artifact:history", { artifactId, count: Array.isArray(data) ? data.length : undefined });
         return data;
     },
-    // ----------------- Discovery -----------------
+    // ----------------- Discovery (Start a run) -----------------
     async startDiscovery(workspaceId, requestBody) {
         const url = `${DISCOVERY_BASE}/discover/${workspaceId}`;
-        // No extra fields. Send exactly what the UI built:
+        // Send exactly what the UI built
         const bodyJson = JSON.stringify(requestBody ?? {});
         // Debug
         console.log("[EXT] discovery:start →", url);
@@ -196,6 +196,30 @@ exports.RainaWorkspaceService = {
         if (!res.ok)
             throw new Error(`Failed to start discovery (${res.status}) ${text}`);
         return text ? JSON.parse(text) : undefined;
+    },
+    // ----------------- Runs (List/Get/Delete) -----------------
+    async listRuns(workspaceId, opts) {
+        const url = `${DISCOVERY_BASE}/runs${qs({
+            workspace_id: workspaceId,
+            limit: opts?.limit,
+            offset: opts?.offset,
+        })}`;
+        const res = await fetch(url);
+        if (!res.ok)
+            throw new Error(`Failed to list runs (${res.status})`);
+        const data = await json(res);
+        return Array.isArray(data) ? data : [];
+    },
+    async getRun(runId) {
+        const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`);
+        if (!res.ok)
+            throw new Error(`Failed to get run (${res.status})`);
+        return await json(res);
+    },
+    async deleteRun(runId) {
+        const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`, { method: "DELETE" });
+        if (!(res.ok || res.status === 204))
+            throw new Error(`Failed to delete run (${res.status})`);
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

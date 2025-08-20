@@ -66,6 +66,14 @@ class RainaPanel {
         this.panel.webview.onDidReceiveMessage(async (message) => {
             const { type, token, payload } = message ?? {};
             const reply = (ok, data, error) => this.panel.webview.postMessage({ token, ok, data, error });
+            // Dynamic access so this file compiles before we add new service methods.
+            const svc = RainaWorkspaceService_1.RainaWorkspaceService;
+            const ensure = (fn) => {
+                if (typeof svc[fn] !== "function") {
+                    throw new Error(`Backend method '${fn}' is not implemented yet. (Add it in src/services/RainaWorkspaceService.ts)`);
+                }
+                return svc[fn].bind(RainaWorkspaceService_1.RainaWorkspaceService);
+            };
             try {
                 switch (type) {
                     // ---- Workspace ----
@@ -91,7 +99,36 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Discovery (stubbed to your discovery service) ----
+                    // ---- Runs (NEW) ----
+                    case "runs:list": {
+                        const { workspaceId, limit, offset } = payload ?? {};
+                        const listRuns = ensure("listRuns");
+                        const data = await listRuns(workspaceId, { limit, offset });
+                        reply(true, data);
+                        break;
+                    }
+                    case "runs:get": {
+                        const { runId } = payload ?? {};
+                        const getRun = ensure("getRun");
+                        const data = await getRun(runId);
+                        reply(true, data);
+                        break;
+                    }
+                    case "runs:delete": {
+                        const { runId } = payload ?? {};
+                        const deleteRun = ensure("deleteRun");
+                        await deleteRun(runId);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    case "runs:start": {
+                        // Reuse your existing discovery start service method
+                        const { workspaceId, requestBody } = payload ?? {};
+                        const data = await RainaWorkspaceService_1.RainaWorkspaceService.startDiscovery(workspaceId, requestBody);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---- Discovery (existing) ----
                     case "discovery:start": {
                         const { workspaceId, options } = payload ?? {};
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.startDiscovery(workspaceId, options);
@@ -135,7 +172,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Draw.io panel (NEW) ----
+                    // ---- Draw.io panel ----
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
                         this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));

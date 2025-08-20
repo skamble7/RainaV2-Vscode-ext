@@ -1,3 +1,4 @@
+// src/services/useWorkspaceDetailStore.ts
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";

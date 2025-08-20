@@ -33,7 +33,7 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
     };
 }
 
-const API_BASE = "http://127.0.0.1:8010";     // workspace-service
+const API_BASE = "http://127.0.0.1:8010";      // workspace-service
 const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
 
@@ -54,6 +54,37 @@ function qs(params: Record<string, any | undefined>) {
 function getEtag(h: Headers) {
     return h.get("ETag") ?? h.get("etag") ?? undefined; // safety for case variance
 }
+
+/* ---------------------------- Discovery Run Types ---------------------------- */
+
+export type RunStatus = "pending" | "running" | "completed" | "failed" | "canceled";
+
+export type DiscoveryRun = {
+    run_id: string;
+    workspace_id: string;
+    playbook_id: string;
+    model_id?: string;
+    status: RunStatus;
+    started_at?: string;
+    finished_at?: string;
+    input_fingerprint?: string;
+    input_diff?: any;
+    strategy?: string;
+    artifacts?: any[]; // optional until details view uses it
+    error?: string | null;
+};
+
+export type StartDiscoveryResponse = {
+    accepted: boolean;
+    run_id: string;
+    workspace_id: string;
+    playbook_id: string;
+    model_id?: string;
+    dry_run?: boolean;
+    request_id?: string;
+    correlation_id?: string;
+    message?: string;
+};
 
 export const RainaWorkspaceService = {
     // ----------------- Workspaces -----------------
@@ -213,11 +244,11 @@ export const RainaWorkspaceService = {
         return data;
     },
 
-    // ----------------- Discovery -----------------
-    async startDiscovery(workspaceId: string, requestBody?: any) {
+    // ----------------- Discovery (Start a run) -----------------
+    async startDiscovery(workspaceId: string, requestBody?: any): Promise<StartDiscoveryResponse | undefined> {
         const url = `${DISCOVERY_BASE}/discover/${workspaceId}`;
 
-        // No extra fields. Send exactly what the UI built:
+        // Send exactly what the UI built
         const bodyJson = JSON.stringify(requestBody ?? {});
 
         // Debug
@@ -225,7 +256,7 @@ export const RainaWorkspaceService = {
         console.log("[EXT] discovery:start → body\n", bodyJson);
 
         const res = await fetch(url, {
-            method: "POST",     
+            method: "POST",
             headers: { "Content-Type": "application/json" },
             body: bodyJson,
         });
@@ -235,7 +266,30 @@ export const RainaWorkspaceService = {
         console.log("[EXT] discovery:start ← body\n", text);
 
         if (!res.ok) throw new Error(`Failed to start discovery (${res.status}) ${text}`);
-        return text ? JSON.parse(text) : undefined;
+        return text ? (JSON.parse(text) as StartDiscoveryResponse) : undefined;
     },
 
+    // ----------------- Runs (List/Get/Delete) -----------------
+    async listRuns(workspaceId: string, opts?: { limit?: number; offset?: number }): Promise<DiscoveryRun[]> {
+        const url = `${DISCOVERY_BASE}/runs${qs({
+            workspace_id: workspaceId,
+            limit: opts?.limit,
+            offset: opts?.offset,
+        })}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to list runs (${res.status})`);
+        const data = await json<DiscoveryRun[]>(res);
+        return Array.isArray(data) ? data : [];
+    },
+
+    async getRun(runId: string): Promise<DiscoveryRun> {
+        const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`);
+        if (!res.ok) throw new Error(`Failed to get run (${res.status})`);
+        return await json<DiscoveryRun>(res);
+    },
+
+    async deleteRun(runId: string): Promise<void> {
+        const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`, { method: "DELETE" });
+        if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete run (${res.status})`);
+    },
 };
