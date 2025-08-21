@@ -16,6 +16,9 @@ import ArtifactView from "./artifact/ArtifactView";
 // NEW: Runs tab
 import RunsTab from "@/components/runs/RunsTab";
 
+// NEW: Overview tab (moved to top-level components/overview)
+import Overview from "@/components/overview/Overview";
+
 // NEW: discover drawer + toaster
 import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
 import { Toaster } from "@/components/ui/toaster";
@@ -28,6 +31,13 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
   useEffect(() => { load(workspaceId); }, [workspaceId, load]);
+
+  // Let Overview (and any other UI) open the Discover drawer via a custom event
+  useEffect(() => {
+    const handler = (e: Event) => setDiscoverOpen(true);
+    window.addEventListener("raina:openDiscover", handler as any);
+    return () => window.removeEventListener("raina:openDiscover", handler as any);
+  }, []);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-neutral-950 text-neutral-100">
@@ -214,8 +224,10 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
   // Non-artifact tabs
   if (tab === "overview") {
     return (
-      <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
-        Overview coming up…
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-[1400px] mx-auto px-4 py-6">
+          <Overview />
+        </div>
       </div>
     );
   }
