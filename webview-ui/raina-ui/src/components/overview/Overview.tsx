@@ -19,10 +19,11 @@ function firstCompleted(runs: DiscoveryRun[]): DiscoveryRun | undefined {
   rs.sort((a, b) => (a.started_at ?? "").localeCompare(b.started_at ?? ""));
   return rs[0];
 }
-const isEmptyObj = (o: unknown) => !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o as any).length === 0;
+const isEmptyObj = (o: unknown) =>
+  !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o as any).length === 0;
 
 export default function Overview() {
-  const { detail } = useWorkspaceDetailStore();
+  const { detail, setTab: setWorkspaceTab } = useWorkspaceDetailStore();
   const wsId = (detail as any)?.workspace_id ?? (detail as any)?.workspace?._id;
   const { items: runs, load: loadRuns, loading: runsLoading } = useRunsStore();
 
@@ -44,11 +45,13 @@ export default function Overview() {
         baselineRun: undefined as DiscoveryRun | undefined,
       };
     }
-    const candidate = runs.find((r: any) => r?.strategy === "baseline" && r.status === "completed") || firstCompleted(runs);
+    const candidate =
+      runs.find((r: any) => r?.strategy === "baseline" && r.status === "completed") ||
+      firstCompleted(runs);
     return {
       baselineAvc: (candidate as any)?.inputs?.avc,
       baselinePss: (candidate as any)?.inputs?.pss,
-      baselineFss: (((candidate as any)?.inputs?.fss?.stories as StoryItem[]) ?? []),
+      baselineFss: ((candidate as any)?.inputs?.fss?.stories as StoryItem[]) ?? [],
       baselineRun: candidate,
     };
   }, [detail, runs]);
@@ -89,7 +92,13 @@ export default function Overview() {
 
             <TabsContent value="fss" className="pt-4">
               {/* baseline-only list + add feature → delta run */}
-              <FssTab stories={(baselineFss ?? []) as StoryItem[]} />
+              <FssTab
+                stories={(baselineFss ?? []) as StoryItem[]}
+                onRunStarted={() => {
+                  // ⛳️ switch the *workspace* tabs to "runs"
+                  setWorkspaceTab("runs");
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="pss" className="pt-4">

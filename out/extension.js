@@ -35,7 +35,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
-// src/extension.ts
 const vscode = __importStar(require("vscode"));
 const RainaPanel_1 = require("./panels/RainaPanel");
 const NotificationStream_1 = require("./services/NotificationStream");
@@ -50,22 +49,32 @@ function activate(context) {
     // Start WS stream using setting (fallback to localhost)
     const cfg = vscode.workspace.getConfiguration("raina");
     const wsUrl = cfg.get("notificationWsUrl", "ws://localhost:8016/ws");
+    // NEW: create the stream with onEvent to forward events to the webview
     notifStream = new NotificationStream_1.NotificationStream({
         url: wsUrl,
         channel: output,
         autoStart: true,
+        onEvent: (evt) => {
+            // Forward all events; UI will decide if it cares (e.g., run updates)
+            RainaPanel_1.RainaPanel.postToWebview({ type: "runs:event", payload: evt });
+        },
     });
     context.subscriptions.push({ dispose: () => notifStream?.dispose() });
     // React to config changes (URL)
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration("raina.notificationWsUrl")) {
-            const newUrl = vscode.workspace.getConfiguration("raina").get("notificationWsUrl", wsUrl);
+            const newUrl = vscode.workspace
+                .getConfiguration("raina")
+                .get("notificationWsUrl", wsUrl);
             output?.appendLine(`[RAINA] WS URL changed to ${newUrl}. Reconnecting...`);
             notifStream?.dispose();
             notifStream = new NotificationStream_1.NotificationStream({
                 url: newUrl,
                 channel: output,
                 autoStart: true,
+                onEvent: (evt) => {
+                    RainaPanel_1.RainaPanel.postToWebview({ type: "runs:event", payload: evt });
+                },
             });
         }
     }));
@@ -103,7 +112,7 @@ function activate(context) {
     if (view.visible) {
         maybeLaunch();
     }
-    const visSub = view.onDidChangeVisibility(e => {
+    const visSub = view.onDidChangeVisibility((e) => {
         if (e.visible) {
             maybeLaunch();
         }

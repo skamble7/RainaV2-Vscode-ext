@@ -1,4 +1,3 @@
-// src/panels/RainaPanel.ts
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
@@ -8,6 +7,12 @@ export class RainaPanel {
   public static currentPanel: RainaPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
+
+  /** NEW: helper the extension can use to emit messages into the UI */
+  public static postToWebview(message: unknown) {
+    const p = RainaPanel.currentPanel?.panel;
+    if (p) p.webview.postMessage(message);
+  }
 
   public static createOrShow(extensionUri: vscode.Uri) {
     const column = vscode.ViewColumn.One;
@@ -99,7 +104,6 @@ export class RainaPanel {
             break;
           }
           case "runs:start": {
-            // Reuse your existing discovery start service method
             const { workspaceId, requestBody } = payload ?? {};
             const data = await RainaWorkspaceService.startDiscovery(workspaceId, requestBody);
             reply(true, data);
@@ -168,7 +172,6 @@ export class RainaPanel {
           case "raina.openDrawio": {
             const { title, xml } = payload ?? {};
             this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
-            // No reply needed; this is a fire-and-forget action
             break;
           }
 
@@ -201,7 +204,6 @@ export class RainaPanel {
     panel.webview.onDidReceiveMessage((msg) => {
       if (msg?.type === "drawio.saved") {
         const updatedXml = String(msg.xml ?? "");
-        // Forward to main webview; UI can decide how to persist
         this.panel.webview.postMessage({
           type: "drawio.saved",
           payload: { title, xml: updatedXml },
@@ -253,19 +255,16 @@ export class RainaPanel {
       editor.contentWindow.postMessage(JSON.stringify(message), "*");
     }
 
-    // For visibility when debugging
     function dbg(kind, data) {
       vscode.postMessage({ type: "drawio.debug", kind, data });
     }
 
-    // Some builds send 'init', some send 'ready' — handle both
     window.addEventListener("message", (event) => {
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (!data || !data.event) return;
 
         if (data.event === "init" || data.event === "ready") {
-          // Stop spinner by loading valid XML
           postToEmbed({ action: "load", xml: atob("${xmlB64}") });
           dbg("loaded", { len: ${xmlForLoad.length} });
         }
@@ -286,7 +285,6 @@ export class RainaPanel {
       }
     });
 
-    // Optional nudge in case 'init' never arrives (rare)
     editor.addEventListener("load", () => {
       setTimeout(() => postToEmbed({ action: "status" }), 1500);
     });
@@ -296,7 +294,6 @@ export class RainaPanel {
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
-    // 1) Try Vite-internal path (.vite/manifest.json), 2) fallback to manifest.json at root
     const manifestCandidates = [
       path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
       path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
@@ -310,12 +307,11 @@ export class RainaPanel {
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-    // Some manifests key by "index.html", others by entry like "src/main.tsx"
     const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
     const entry = manifest[entryKey];
 
-    const scriptFile: string = entry.file; // e.g. "assets/index-abc123.js"
-    const cssFile: string | undefined = entry.css?.[0]; // e.g. "assets/index-abc123.css"
+    const scriptFile: string = entry.file;
+    const cssFile: string | undefined = entry.css?.[0];
 
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", scriptFile)
@@ -331,9 +327,8 @@ export class RainaPanel {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   html, body, #root { height:100%; width:100%; }
-  /* VS Code webviews sometimes add body padding (20px). Kill it. */
   body { margin:0 !important; padding:0 !important; background:#0a0a0a; }
-  #root { position:fixed; inset:0; } /* full-bleed root */
+  #root { position:fixed; inset:0; }
 </style>
 ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
 <title>Raina</title>

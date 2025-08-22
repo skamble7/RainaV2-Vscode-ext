@@ -34,7 +34,6 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RainaPanel = void 0;
-// src/panels/RainaPanel.ts
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
@@ -43,6 +42,12 @@ class RainaPanel {
     static currentPanel;
     panel;
     extensionUri;
+    /** NEW: helper the extension can use to emit messages into the UI */
+    static postToWebview(message) {
+        const p = RainaPanel.currentPanel?.panel;
+        if (p)
+            p.webview.postMessage(message);
+    }
     static createOrShow(extensionUri) {
         const column = vscode.ViewColumn.One;
         if (RainaPanel.currentPanel) {
@@ -122,7 +127,6 @@ class RainaPanel {
                         break;
                     }
                     case "runs:start": {
-                        // Reuse your existing discovery start service method
                         const { workspaceId, requestBody } = payload ?? {};
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.startDiscovery(workspaceId, requestBody);
                         reply(true, data);
@@ -176,7 +180,6 @@ class RainaPanel {
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
                         this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
-                        // No reply needed; this is a fire-and-forget action
                         break;
                     }
                     // ---- Misc / dev pings ----
@@ -205,7 +208,6 @@ class RainaPanel {
         panel.webview.onDidReceiveMessage((msg) => {
             if (msg?.type === "drawio.saved") {
                 const updatedXml = String(msg.xml ?? "");
-                // Forward to main webview; UI can decide how to persist
                 this.panel.webview.postMessage({
                     type: "drawio.saved",
                     payload: { title, xml: updatedXml },
@@ -253,19 +255,16 @@ class RainaPanel {
       editor.contentWindow.postMessage(JSON.stringify(message), "*");
     }
 
-    // For visibility when debugging
     function dbg(kind, data) {
       vscode.postMessage({ type: "drawio.debug", kind, data });
     }
 
-    // Some builds send 'init', some send 'ready' — handle both
     window.addEventListener("message", (event) => {
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (!data || !data.event) return;
 
         if (data.event === "init" || data.event === "ready") {
-          // Stop spinner by loading valid XML
           postToEmbed({ action: "load", xml: atob("${xmlB64}") });
           dbg("loaded", { len: ${xmlForLoad.length} });
         }
@@ -286,7 +285,6 @@ class RainaPanel {
       }
     });
 
-    // Optional nudge in case 'init' never arrives (rare)
     editor.addEventListener("load", () => {
       setTimeout(() => postToEmbed({ action: "status" }), 1500);
     });
@@ -295,7 +293,6 @@ class RainaPanel {
 </html>`;
     }
     getHtmlForWebview(webview) {
-        // 1) Try Vite-internal path (.vite/manifest.json), 2) fallback to manifest.json at root
         const manifestCandidates = [
             path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
             path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
@@ -306,11 +303,10 @@ class RainaPanel {
             return "<html><body><h3>Build missing</h3></body></html>";
         }
         const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-        // Some manifests key by "index.html", others by entry like "src/main.tsx"
         const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
         const entry = manifest[entryKey];
-        const scriptFile = entry.file; // e.g. "assets/index-abc123.js"
-        const cssFile = entry.css?.[0]; // e.g. "assets/index-abc123.css"
+        const scriptFile = entry.file;
+        const cssFile = entry.css?.[0];
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", scriptFile));
         const styleUri = cssFile
             ? webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", cssFile))
@@ -322,9 +318,8 @@ class RainaPanel {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   html, body, #root { height:100%; width:100%; }
-  /* VS Code webviews sometimes add body padding (20px). Kill it. */
   body { margin:0 !important; padding:0 !important; background:#0a0a0a; }
-  #root { position:fixed; inset:0; } /* full-bleed root */
+  #root { position:fixed; inset:0; }
 </style>
 ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
 <title>Raina</title>

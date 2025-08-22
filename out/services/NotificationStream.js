@@ -17,9 +17,12 @@ class NotificationStream {
     reconnectMaxDelayMs;
     heartbeatIntervalMs;
     idleTimeoutMs;
+    /** NEW */
+    onEvent;
     constructor(opts) {
         this.url = opts.url;
         this.channel = opts.channel;
+        this.onEvent = opts.onEvent;
         this.reconnectBaseDelayMs = opts.reconnectBaseDelayMs ?? 1000;
         this.reconnectMaxDelayMs = opts.reconnectMaxDelayMs ?? 15000;
         this.heartbeatIntervalMs = opts.heartbeatIntervalMs ?? 15000;
@@ -59,9 +62,18 @@ class NotificationStream {
     onMessage(raw) {
         try {
             const text = typeof raw === "string" ? raw : raw.toString("utf8");
+            // Try to parse as JSON. If it fails, print and forward raw.
+            let parsed;
+            try {
+                parsed = JSON.parse(text);
+            }
+            catch {
+                parsed = undefined;
+            }
+            // Pretty print to the Output channel (preserve your existing behavior)
             let line = text;
             try {
-                const obj = JSON.parse(text);
+                const obj = parsed ?? {};
                 const evt = obj.event ?? obj.type ?? "event";
                 const lvl = (obj.level ?? obj.severity ?? "info").toString().toUpperCase();
                 const msg = obj.message ?? obj.text ?? obj.detail ?? "";
@@ -72,9 +84,18 @@ class NotificationStream {
                 line = `[${lvl}] ${evt}: ${msg}${tail}`;
             }
             catch {
-                // not JSON; print raw
+                // not JSON; keep raw text
             }
             this.channel.appendLine(line);
+            // NEW: Forward to UI via callback (parsed JSON preferred; else raw)
+            if (this.onEvent) {
+                if (parsed !== undefined) {
+                    this.onEvent(parsed);
+                }
+                else {
+                    this.onEvent({ type: "ws.raw", text });
+                }
+            }
         }
         catch (err) {
             this.channel.appendLine(`[RAINA] Failed to handle message: ${String(err)}`);

@@ -10,6 +10,9 @@ type Options = {
   reconnectMaxDelayMs?: number;    // cap for backoff
   heartbeatIntervalMs?: number;    // ping every N ms
   idleTimeoutMs?: number;          // close if no pong within N ms
+
+  /** NEW: receive parsed JSON events (and raw text if not JSON) */
+  onEvent?: (evt: any) => void;
 };
 
 export class NotificationStream {
@@ -28,9 +31,13 @@ export class NotificationStream {
   private readonly heartbeatIntervalMs: number;
   private readonly idleTimeoutMs: number;
 
+  /** NEW */
+  private readonly onEvent?: (evt: any) => void;
+
   constructor(opts: Options) {
     this.url = opts.url;
     this.channel = opts.channel;
+    this.onEvent = opts.onEvent;
 
     this.reconnectBaseDelayMs = opts.reconnectBaseDelayMs ?? 1000;
     this.reconnectMaxDelayMs  = opts.reconnectMaxDelayMs ?? 15000;
@@ -76,9 +83,19 @@ export class NotificationStream {
   private onMessage(raw: WebSocket.RawData) {
     try {
       const text = typeof raw === "string" ? raw : raw.toString("utf8");
+
+      // Try to parse as JSON. If it fails, print and forward raw.
+      let parsed: any | undefined;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = undefined;
+      }
+
+      // Pretty print to the Output channel (preserve your existing behavior)
       let line = text;
       try {
-        const obj = JSON.parse(text);
+        const obj = parsed ?? {};
         const evt  = obj.event ?? obj.type ?? "event";
         const lvl  = (obj.level ?? obj.severity ?? "info").toString().toUpperCase();
         const msg  = obj.message ?? obj.text ?? obj.detail ?? "";
@@ -88,9 +105,18 @@ export class NotificationStream {
         const tail = Object.keys(rest).length ? ` ${JSON.stringify(rest)}` : "";
         line = `[${lvl}] ${evt}: ${msg}${tail}`;
       } catch {
-        // not JSON; print raw
+        // not JSON; keep raw text
       }
       this.channel.appendLine(line);
+
+      // NEW: Forward to UI via callback (parsed JSON preferred; else raw)
+      if (this.onEvent) {
+        if (parsed !== undefined) {
+          this.onEvent(parsed);
+        } else {
+          this.onEvent({ type: "ws.raw", text });
+        }
+      }
     } catch (err) {
       this.channel.appendLine(`[RAINA] Failed to handle message: ${String(err)}`);
     }

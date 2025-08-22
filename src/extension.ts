@@ -1,4 +1,3 @@
-// src/extension.ts
 import * as vscode from "vscode";
 import { RainaPanel } from "./panels/RainaPanel";
 import { NotificationStream } from "./services/NotificationStream";
@@ -18,24 +17,34 @@ export function activate(context: vscode.ExtensionContext) {
   const cfg = vscode.workspace.getConfiguration("raina");
   const wsUrl = cfg.get<string>("notificationWsUrl", "ws://localhost:8016/ws");
 
+  // NEW: create the stream with onEvent to forward events to the webview
   notifStream = new NotificationStream({
-    url: wsUrl,
+    url: wsUrl!,
     channel: output!,
     autoStart: true,
+    onEvent: (evt: any) => {
+      // Forward all events; UI will decide if it cares (e.g., run updates)
+      RainaPanel.postToWebview({ type: "runs:event", payload: evt });
+    },
   });
   context.subscriptions.push({ dispose: () => notifStream?.dispose() });
 
   // React to config changes (URL)
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration(e => {
+    vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("raina.notificationWsUrl")) {
-        const newUrl = vscode.workspace.getConfiguration("raina").get<string>("notificationWsUrl", wsUrl);
+        const newUrl = vscode.workspace
+          .getConfiguration("raina")
+          .get<string>("notificationWsUrl", wsUrl);
         output?.appendLine(`[RAINA] WS URL changed to ${newUrl}. Reconnecting...`);
         notifStream?.dispose();
         notifStream = new NotificationStream({
           url: newUrl!,
           channel: output!,
           autoStart: true,
+          onEvent: (evt: any) => {
+            RainaPanel.postToWebview({ type: "runs:event", payload: evt });
+          },
         });
       }
     })
@@ -84,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
     maybeLaunch();
   }
 
-  const visSub = view.onDidChangeVisibility(e => {
+  const visSub = view.onDidChangeVisibility((e) => {
     if (e.visible) {
       maybeLaunch();
     } else {
