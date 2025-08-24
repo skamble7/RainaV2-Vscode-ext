@@ -1,3 +1,4 @@
+//src/extension.ts
 import * as vscode from "vscode";
 import { RainaPanel } from "./panels/RainaPanel";
 import { NotificationStream } from "./services/NotificationStream";

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
+//src/extension.ts
 const vscode = __importStar(require("vscode"));
 const RainaPanel_1 = require("./panels/RainaPanel");
 const NotificationStream_1 = require("./services/NotificationStream");

@@ -1,118 +1,135 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import { callHost } from "@/lib/host";
 
-/** Mirror of backend enum */
-export type RunStatus = "pending" | "running" | "completed" | "failed" | "canceled";
-
-/** Minimal run shape we need for listing/details */
+// Keep this in sync with backend but stay permissive (all optional)
 export type DiscoveryRun = {
   run_id: string;
   workspace_id: string;
   playbook_id: string;
-  model_id?: string;
-  status: RunStatus;
-  started_at?: string;
-  finished_at?: string;
-  input_fingerprint?: string;
-  input_diff?: any;
-  strategy?: string;
-  error?: string | null;
+  status: "created" | "pending" | "running" | "completed" | "failed" | "canceled";
+  model_id?: string | null;
 
-  // NEW: friendlier labels
-  title?: string;
-  description?: string;
+  // Friendly metadata
+  title?: string | null;
+  description?: string | null;
 
-  // NEW: we need artifact IDs from the result summary
+  // Timestamps
+  created_at?: string | null;
+  updated_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+
+  // New fields from discovery-service
+  input_fingerprint?: string | null;
+  input_diff?: any;         // ← important for Merge-from-Run UI
+  strategy?: string | null;
+
+  // Full inputs snapshot captured at run creation
+  inputs?: any;             // ← important for Promote-to-Baseline
+
+  // Optional result summary attached on completion
   result_summary?: {
-    run_id?: string;
-    workspace_id?: string;
-    playbook_id?: string;
+    run_id: string;
+    workspace_id: string;
+    playbook_id: string;
     artifact_ids?: string[];
+    validations?: any[];
+    logs?: string[];
     started_at?: string;
     completed_at?: string;
-    title?: string;
-    description?: string;
-  };
+    duration_s?: number | string | { $numberDouble: string };
+    title?: string | null;
+    description?: string | null;
+  } | null;
+
+  // Optional artifacts/deltas (future-proof)
+  artifacts?: any[];
+  deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> };
+
+  error?: string | null;
 };
 
-type Store = {
-  // data
+type State = {
+  items: DiscoveryRun[];
   loading: boolean;
   error?: string;
-  items: DiscoveryRun[];
+
   selectedRunId?: string;
 
-  // actions
-  load: (workspaceId: string, opts?: { limit?: number; offset?: number }) => Promise<void>;
+  load: (workspaceId: string) => Promise<void>;
   refreshOne: (runId: string) => Promise<void>;
   delete: (runId: string) => Promise<void>;
   start: (workspaceId: string, requestBody: any) => Promise<string | undefined>;
   select: (runId?: string) => void;
-  clear: () => void;
 };
 
-export const useRunsStore = create<Store>((set, get) => ({
-  loading: false,
+export const useRunsStore = create<State>((set, get) => ({
   items: [],
+  loading: false,
+  error: undefined,
+  selectedRunId: undefined,
 
-  async load(workspaceId, opts) {
+  async load(workspaceId: string) {
     set({ loading: true, error: undefined });
     try {
-      const list = await callHost<DiscoveryRun[]>({
+      const runs = await callHost<DiscoveryRun[]>({
         type: "runs:list",
-        payload: { workspaceId, limit: opts?.limit ?? 50, offset: opts?.offset ?? 0 },
+        payload: { workspaceId, limit: 100, offset: 0 },
       });
-      set({ items: list ?? [], loading: false });
+      set({ items: runs, loading: false });
+      // Keep selected id if it still exists
+      const { selectedRunId } = get();
+      if (selectedRunId && !runs.some(r => r.run_id === selectedRunId)) {
+        set({ selectedRunId: undefined });
+      }
     } catch (e: any) {
       set({ error: e?.message ?? "Failed to load runs", loading: false });
     }
   },
 
-  async refreshOne(runId) {
+  async refreshOne(runId: string) {
     try {
-      const run = await callHost<DiscoveryRun>({ type: "runs:get", payload: { runId } });
-      if (!run) return;
-      set((s) => ({ items: s.items.map((x) => (x.run_id === runId ? run : x)) }));
-    } catch {
-      /* ignore one-off errors */
+      const full = await callHost<DiscoveryRun>({ type: "runs:get", payload: { runId } });
+      const { items } = get();
+      const idx = items.findIndex(r => r.run_id === runId);
+      if (idx >= 0) {
+        const next = items.slice();
+        next[idx] = { ...items[idx], ...full };
+        set({ items: next });
+      } else {
+        set({ items: [full, ...items] });
+      }
+    } catch (e: any) {
+      set({ error: e?.message ?? "Failed to refresh run" });
     }
   },
 
-  async delete(runId) {
-    await callHost({ type: "runs:delete", payload: { runId } });
-    set((s) => ({
-      items: s.items.filter((x) => x.run_id !== runId),
-      selectedRunId: s.selectedRunId === runId ? undefined : s.selectedRunId,
-    }));
-  },
-
-  async start(workspaceId, requestBody) {
-    const res = await callHost<any>({ type: "runs:start", payload: { workspaceId, requestBody } });
-    const runId = res?.run_id as string | undefined;
-
-    // Optimistically append a placeholder entry so the user sees it immediately
-    if (runId) {
-      set((s) => ({
-        items: [
-          {
-            run_id: runId,
-            workspace_id: workspaceId,
-            playbook_id: res?.playbook_id ?? (requestBody?.playbook_id as string | undefined) ?? "unknown",
-            status: "pending",
-            started_at: new Date().toISOString(),
-            title: res?.title ?? requestBody?.title ?? "New run",
-            description: res?.description ?? requestBody?.description,
-          },
-          ...s.items,
-        ],
-      }));
+  async delete(runId: string) {
+    try {
+      await callHost({ type: "runs:delete", payload: { runId } });
+      const items = get().items.filter(r => r.run_id !== runId);
+      set({ items });
+      if (get().selectedRunId === runId) set({ selectedRunId: undefined });
+    } catch (e: any) {
+      set({ error: e?.message ?? "Failed to delete run" });
     }
-    return runId;
   },
 
-  select: (runId) => set({ selectedRunId: runId }),
+  async start(workspaceId: string, requestBody: any) {
+    try {
+      const res = await callHost<{ run_id: string }>({
+        type: "runs:start",
+        payload: { workspaceId, requestBody },
+      });
+      return res?.run_id;
+    } catch (e: any) {
+      set({ error: e?.message ?? "Failed to start run" });
+      return undefined;
+    }
+  },
 
-  clear: () => set({ loading: false, error: undefined, items: [], selectedRunId: undefined }),
+  select(runId?: string) {
+    set({ selectedRunId: runId });
+  },
 }));

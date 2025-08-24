@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/overview/Overview.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
 import { useRunsStore, type DiscoveryRun } from "@/stores/useRunsStore";
@@ -30,7 +29,7 @@ export default function Overview() {
   const [tab, setTab] = useState<"avc" | "fss" | "pss">("fss");
 
   useEffect(() => {
-    if (wsId) loadRuns(wsId, { limit: 100, offset: 0 });
+    if (wsId) loadRuns(wsId); // ✅ load takes only workspaceId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsId]);
 
