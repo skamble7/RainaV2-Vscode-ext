@@ -6,7 +6,7 @@ import { useRunsStore, type DiscoveryRun } from "@/stores/useRunsStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronLeft, ChevronRight, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RefreshCw, Trash2 } from "lucide-react";
 import { callHost } from "@/lib/host";
 
 type Props = { workspaceId: string };
@@ -61,9 +61,7 @@ function countsOf(run: any) {
 }
 
 function nkOf(a: Partial<Artifact>): string {
-  const nk =
-    a.natural_key ||
-    (a.kind && a.name ? `${String(a.kind)}:${String(a.name)}` : "");
+  const nk = a.natural_key || (a.kind && a.name ? `${String(a.kind)}:${String(a.name)}` : "");
   return String(nk || "").toLowerCase();
 }
 
@@ -175,8 +173,29 @@ export default function RunsTab({ workspaceId }: Props) {
   const [showStart, setShowStart] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // Controls panel collapsed/expanded
+  const [panelOpen, setPanelOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem("raina:runs:controlsOpen");
+      return v === null ? true : v === "1";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("raina:runs:controlsOpen", panelOpen ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [panelOpen]);
+
   // RIGHT PANE: baseline panel
-  const [baseline, setBaseline] = useState<BaselineInfo>({ version: null, fingerprint: null, last_promoted_run_id: null });
+  const [baseline, setBaseline] = useState<BaselineInfo>({
+    version: null,
+    fingerprint: null,
+    last_promoted_run_id: null,
+  });
   const [blBusy, setBlBusy] = useState(false);
   const [blMsg, setBlMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
@@ -195,7 +214,11 @@ export default function RunsTab({ workspaceId }: Props) {
       {
         playbook_id: "pb.micro.plus",
         workspace_id: workspaceId,
-        inputs: { avc: { vision: [], problem_statements: [], goals: [] }, fss: { stories: [] }, pss: { paradigm: "", style: [], tech_stack: [] } },
+        inputs: {
+          avc: { vision: [], problem_statements: [], goals: [] },
+          fss: { stories: [] },
+          pss: { paradigm: "", style: [], tech_stack: [] },
+        },
         options: { model: "openai:gpt-4o-mini", dry_run: false },
         title: "New discovery run",
         description: "Triggered from VS Code",
@@ -479,9 +502,7 @@ export default function RunsTab({ workspaceId }: Props) {
   const leftJson = useMemo(
     () =>
       JSON.stringify(
-        leftArt
-          ? { kind: leftArt.kind, name: leftArt.name, fingerprint: leftArt.fingerprint, data: leftArt.data }
-          : {},
+        leftArt ? { kind: leftArt.kind, name: leftArt.name, fingerprint: leftArt.fingerprint, data: leftArt.data } : {},
         null,
         2
       ),
@@ -490,9 +511,7 @@ export default function RunsTab({ workspaceId }: Props) {
   const rightJson = useMemo(
     () =>
       JSON.stringify(
-        rightArt
-          ? { kind: rightArt.kind, name: rightArt.name, fingerprint: rightArt.fingerprint, data: rightArt.data }
-          : {},
+        rightArt ? { kind: rightArt.kind, name: rightArt.name, fingerprint: rightArt.fingerprint, data: rightArt.data } : {},
         null,
         2
       ),
@@ -655,9 +674,7 @@ export default function RunsTab({ workspaceId }: Props) {
                             {/* Content */}
                             <div className="min-w-0">
                               <div className="truncate font-medium">{title}</div>
-                              {!!desc && (
-                                <div className="truncate text-xs text-neutral-400">{desc}</div>
-                              )}
+                              {!!desc && <div className="truncate text-xs text-neutral-400">{desc}</div>}
 
                               <div className="mt-1 flex items-center gap-2 text-[11px] text-neutral-400">
                                 <span className="font-mono">{r.playbook_id}</span>
@@ -685,7 +702,7 @@ export default function RunsTab({ workspaceId }: Props) {
           )}
         </div>
 
-        {/* RIGHT: Baseline panel + Diff viewer */}
+        {/* RIGHT: Controls panel (collapsible) + Diff viewer */}
         <div className={`relative min-w-0 overflow-auto p-4 space-y-4 ${collapsed ? "pl-12" : ""}`}>
           {collapsed && (
             <div className="absolute left-2 top-2 z-10">
@@ -701,127 +718,162 @@ export default function RunsTab({ workspaceId }: Props) {
             </div>
           )}
 
-          {/* Baseline Panel */}
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-neutral-200">Baseline</div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={refreshBaselinePanel} disabled={blBusy}>
-                  Refresh
-                </Button>
+          {/* Controls Panel (Baseline / Promote / Merge) */}
+          {panelOpen ? (
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60">
+              {/* Panel header with collapse control */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+                <div className="text-sm font-medium text-neutral-200">Baseline & Run Controls</div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="ghost" onClick={refreshBaselinePanel} disabled={blBusy}>
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPanelOpen(false)}
+                    title="Collapse controls"
+                    className="gap-1"
+                  >
+                    <ChevronUp size={16} />
+                    Hide
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* Baseline row */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="text-xs text-neutral-400">
+                      <div className="uppercase tracking-wide">Version</div>
+                      <div className="mt-1 font-mono text-neutral-200">
+                        {baseline.version ?? <span className="text-neutral-500">N/A</span>}
+                      </div>
+                    </div>
+                    <div className="text-xs text-neutral-400">
+                      <div className="uppercase tracking-wide">Fingerprint</div>
+                      <div className="mt-1 font-mono text-neutral-200 truncate" title={baseline.fingerprint || ""}>
+                        {baseline.fingerprint ?? <span className="text-neutral-500">N/A</span>}
+                      </div>
+                    </div>
+                    <div className="text-xs text-neutral-400">
+                      <div className="uppercase tracking-wide">Last Promoted Run</div>
+                      <div
+                        className="mt-1 font-mono text-neutral-200 truncate"
+                        title={baseline.last_promoted_run_id || ""}
+                      >
+                        {baseline.last_promoted_run_id ?? <span className="text-neutral-500">N/A</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Inline status */}
+                  {blMsg && (
+                    <div
+                      className={`mt-3 rounded-md px-2 py-1 text-xs ${
+                        blMsg.kind === "ok" ? "bg-emerald-600/15 text-emerald-300" : "bg-red-600/15 text-red-300"
+                      }`}
+                    >
+                      {blMsg.text}
+                    </div>
+                  )}
+                </div>
+
+                {/* Promote from selected run */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-neutral-200">Promote to Baseline</div>
+                    <div className="text-[11px] text-neutral-400">
+                      {runDetailBusy ? "Loading run…" : selectedRun ? (
+                        <span className="font-mono">{selectedRun.run_id}</span>
+                      ) : (
+                        "Select a run"
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-400">
+                    Replace the baseline with the selected run’s full <span className="font-mono">inputs</span>.
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      onClick={handlePromoteToBaseline}
+                      disabled={!selectedRun || blBusy || runDetailBusy}
+                      title={!selectedRun ? "Select a run first" : ""}
+                    >
+                      Promote
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Merge from selected run */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-neutral-200">Merge from Run</div>
+                    <div className="text-[11px] text-neutral-400">
+                      {runDetailBusy ? "Loading run…" : selectedRun ? (
+                        <span className="font-mono">{selectedRun.run_id}</span>
+                      ) : (
+                        "Select a run"
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-2 text-xs text-neutral-400">
+                    Use the run’s <span className="font-mono">input_diff</span> to upsert changed bits.
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                    <label className="flex items-center gap-2">
+                      <Checkbox checked={mergeFSS} onCheckedChange={(v) => setMergeFSS(Boolean(v))} />
+                      Upsert FSS stories (added + updated)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <Checkbox checked={mergeAVC} onCheckedChange={(v) => setMergeAVC(Boolean(v))} />
+                      Replace AVC
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <Checkbox checked={mergePSS} onCheckedChange={(v) => setMergePSS(Boolean(v))} />
+                      Replace PSS
+                    </label>
+                  </div>
+
+                  {(selectedRun as any)?.input_diff?.fss && (
+                    <div className="mt-2 text-[11px] text-neutral-400">
+                      FSS Δ: +{(selectedRun as any).input_diff.fss.added_keys?.length ?? 0} / updated{" "}
+                      {((selectedRun as any).input_diff.fss.updated?.length ?? 0)}
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      onClick={handleMergeFromRun}
+                      disabled={!selectedRun || blBusy || runDetailBusy}
+                      title={!selectedRun ? "Select a run first" : ""}
+                    >
+                      Merge
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
-
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="text-xs text-neutral-400">
-                <div className="uppercase tracking-wide">Version</div>
-                <div className="mt-1 font-mono text-neutral-200">
-                  {baseline.version ?? <span className="text-neutral-500">N/A</span>}
-                </div>
-              </div>
-              <div className="text-xs text-neutral-400">
-                <div className="uppercase tracking-wide">Fingerprint</div>
-                <div className="mt-1 font-mono text-neutral-200 truncate" title={baseline.fingerprint || ""}>
-                  {baseline.fingerprint ?? <span className="text-neutral-500">N/A</span>}
-                </div>
-              </div>
-              <div className="text-xs text-neutral-400">
-                <div className="uppercase tracking-wide">Last Promoted Run</div>
-                <div className="mt-1 font-mono text-neutral-200 truncate" title={baseline.last_promoted_run_id || ""}>
-                  {baseline.last_promoted_run_id ?? <span className="text-neutral-500">N/A</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Inline status */}
-            {blMsg && (
-              <div
-                className={`mt-3 rounded-md px-2 py-1 text-xs ${
-                  blMsg.kind === "ok" ? "bg-emerald-600/15 text-emerald-300" : "bg-red-600/15 text-red-300"
-                }`}
+          ) : (
+            // Collapsed bar (doesn't take vertical space)
+            <div className="flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setPanelOpen(true)}
+                className="gap-1 text-neutral-300"
+                title="Show controls"
               >
-                {blMsg.text}
-              </div>
-            )}
-
-            {/* Promote from selected run */}
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-neutral-200">Promote to Baseline</div>
-                <div className="text-[11px] text-neutral-400">
-                  {runDetailBusy
-                    ? "Loading run…"
-                    : selectedRun
-                    ? <span className="font-mono">{selectedRun.run_id}</span>
-                    : "Select a run"}
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-neutral-400">
-                Replace the baseline with the selected run’s full <span className="font-mono">inputs</span>.
-              </div>
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  onClick={handlePromoteToBaseline}
-                  disabled={!selectedRun || blBusy || runDetailBusy}
-                  title={!selectedRun ? "Select a run first" : ""}
-                >
-                  Promote
-                </Button>
-              </div>
+                <ChevronDown size={16} />
+                Show Controls
+              </Button>
             </div>
-
-            {/* Merge from selected run */}
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-neutral-200">Merge from Run</div>
-                <div className="text-[11px] text-neutral-400">
-                  {runDetailBusy
-                    ? "Loading run…"
-                    : selectedRun
-                    ? <span className="font-mono">{selectedRun.run_id}</span>
-                    : "Select a run"}
-                </div>
-              </div>
-
-              <div className="mt-2 text-xs text-neutral-400">
-                Use the run’s <span className="font-mono">input_diff</span> to upsert changed bits.
-              </div>
-
-              <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                <label className="flex items-center gap-2">
-                  <Checkbox checked={mergeFSS} onCheckedChange={(v) => setMergeFSS(Boolean(v))} />
-                  Upsert FSS stories (added + updated)
-                </label>
-                <label className="flex items-center gap-2">
-                  <Checkbox checked={mergeAVC} onCheckedChange={(v) => setMergeAVC(Boolean(v))} />
-                  Replace AVC
-                </label>
-                <label className="flex items-center gap-2">
-                  <Checkbox checked={mergePSS} onCheckedChange={(v) => setMergePSS(Boolean(v))} />
-                  Replace PSS
-                </label>
-              </div>
-
-              {(selectedRun as any)?.input_diff?.fss && (
-                <div className="mt-2 text-[11px] text-neutral-400">
-                  FSS Δ: +{(selectedRun as any).input_diff.fss.added_keys?.length ?? 0} / updated{" "}
-                  {((selectedRun as any).input_diff.fss.updated?.length ?? 0)}
-                </div>
-              )}
-
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  onClick={handleMergeFromRun}
-                  disabled={!selectedRun || blBusy || runDetailBusy}
-                  title={!selectedRun ? "Select a run first" : ""}
-                >
-                  Merge
-                </Button>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Diff Viewer */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60">
@@ -910,7 +962,9 @@ export default function RunsTab({ workspaceId }: Props) {
                 </div>
 
                 {!selectedNk ? (
-                  <div className="mt-3 text-sm text-neutral-400">Select an <b>Updated</b> item to view JSON diff (or diagram).</div>
+                  <div className="mt-3 text-sm text-neutral-400">
+                    Select an <b>Updated</b> item to view JSON diff (or diagram).
+                  </div>
                 ) : (
                   <div className="mt-3">
                     {/* Title */}
