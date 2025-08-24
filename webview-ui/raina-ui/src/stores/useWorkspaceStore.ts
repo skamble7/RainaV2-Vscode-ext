@@ -1,3 +1,4 @@
+// src/services/useWorkspaceStore.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // webview-ui/raina-ui/src/stores/useWorkspaceStore.ts
 import { create } from "zustand";
