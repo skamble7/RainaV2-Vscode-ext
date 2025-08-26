@@ -17,6 +17,7 @@ function normalizeWorkspace(w) {
 const API_BASE = "http://127.0.0.1:8010"; // workspace-service
 const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
 // --- helpers ---
 async function json(res) {
     const text = await res.text();
@@ -209,7 +210,7 @@ exports.RainaWorkspaceService = {
         if (!(res.ok || res.status === 204))
             throw new Error(`Failed to delete run (${res.status})`);
     },
-    // ----------------- Baseline (NEW) -----------------
+    // ----------------- Baseline -----------------
     async setBaselineInputs(workspaceId, inputs, opts) {
         const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/baseline-inputs${qs({
             if_absent_only: opts?.ifAbsentOnly ? "true" : undefined,
@@ -240,6 +241,16 @@ exports.RainaWorkspaceService = {
         });
         if (!res.ok)
             throw new Error(`Failed to patch baseline (${res.status})`);
+        return await json(res);
+    },
+    // ----------------- Capability registry (NEW) -----------------
+    async capabilityPackGet(key, version) {
+        if (!key || !version)
+            throw new Error("key and version are required");
+        const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
+        const res = await fetch(url);
+        if (!res.ok)
+            throw new Error(`Failed to fetch capability pack (${res.status})`);
         return await json(res);
     },
 };

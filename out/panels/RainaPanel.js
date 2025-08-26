@@ -43,7 +43,6 @@ class RainaPanel {
     static currentPanel;
     panel;
     extensionUri;
-    /** NEW: helper the extension can use to emit messages into the UI */
     static postToWebview(message) {
         const p = RainaPanel.currentPanel?.panel;
         if (p)
@@ -72,7 +71,6 @@ class RainaPanel {
         this.panel.webview.onDidReceiveMessage(async (message) => {
             const { type, token, payload } = message ?? {};
             const reply = (ok, data, error) => this.panel.webview.postMessage({ token, ok, data, error });
-            // Dynamic access so this file compiles before we add new service methods.
             const svc = RainaWorkspaceService_1.RainaWorkspaceService;
             const ensure = (fn) => {
                 if (typeof svc[fn] !== "function") {
@@ -133,7 +131,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Baseline (NEW) ----
+                    // ---- Baseline ----
                     case "baseline:set": {
                         const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
                         const setBaselineInputs = ensure("setBaselineInputs");
@@ -156,7 +154,15 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Artifacts (ETag-aware) ----
+                    // ---- Capability registry (NEW) ----
+                    case "capability:pack:get": {
+                        const { key, version } = payload ?? {};
+                        const getPack = ensure("capabilityPackGet");
+                        const data = await getPack(key, version);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---- Artifacts ----
                     case "artifact:get": {
                         const { workspaceId, artifactId } = payload ?? {};
                         const out = await RainaWorkspaceService_1.RainaWorkspaceService.getArtifact(workspaceId, artifactId);

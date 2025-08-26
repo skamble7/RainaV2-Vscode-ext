@@ -5,8 +5,8 @@ export type RawWorkspace = {
   id?: string;
   _id?: string;
   name: string;
-  description?: string | null;
-  created_by?: string | null;
+  description?: string |  null;
+  created_by?: string |  null;
   created_at: string;
   updated_at: string;
 };
@@ -33,9 +33,10 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
   };
 }
 
-const API_BASE = "http://127.0.0.1:8010"; // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
+const API_BASE = "http://127.0.0.1:8010";       // workspace-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
 
 // --- helpers ---
 async function json<T = any>(res: Response): Promise<T> {
@@ -268,7 +269,7 @@ export const RainaWorkspaceService = {
   },
 
   // ----------------- Runs (List/Get/Delete) -----------------
-  async listRuns(workspaceId: string, opts?: { limit?: number; offset?: number }): Promise<DiscoveryRun[]> {
+  async listRuns(workspaceId: string, opts?: { limit?: number; offset?: number }) {
     const url = `${DISCOVERY_BASE}/runs${qs({
       workspace_id: workspaceId,
       limit: opts?.limit,
@@ -276,27 +277,27 @@ export const RainaWorkspaceService = {
     })}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to list runs (${res.status})`);
-    const data = await json<DiscoveryRun[]>(res);
+    const data = await json(res);
     return Array.isArray(data) ? data : [];
   },
 
-  async getRun(runId: string): Promise<DiscoveryRun> {
+  async getRun(runId: string) {
     const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`);
     if (!res.ok) throw new Error(`Failed to get run (${res.status})`);
-    return await json<DiscoveryRun>(res);
+    return await json(res);
   },
 
-  async deleteRun(runId: string): Promise<void> {
+  async deleteRun(runId: string) {
     const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`, { method: "DELETE" });
     if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete run (${res.status})`);
   },
 
-  // ----------------- Baseline (NEW) -----------------
+  // ----------------- Baseline -----------------
   async setBaselineInputs(
     workspaceId: string,
     inputs: { avc?: any; fss?: any; pss?: any },
     opts?: { ifAbsentOnly?: boolean; expectedVersion?: number }
-  ): Promise<any> {
+  ) {
     const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/baseline-inputs${qs({
       if_absent_only: opts?.ifAbsentOnly ? "true" : undefined,
       expected_version: opts?.expectedVersion,
@@ -312,13 +313,8 @@ export const RainaWorkspaceService = {
 
   async patchBaselineInputs(
     workspaceId: string,
-    payload: {
-      avc?: any;
-      pss?: any;
-      fss_stories_upsert?: any[];
-      expectedVersion?: number;
-    }
-  ): Promise<any> {
+    payload: { avc?: any; pss?: any; fss_stories_upsert?: any[]; expectedVersion?: number }
+  ) {
     const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/baseline-inputs${qs({
       expected_version: payload?.expectedVersion,
     })}`;
@@ -333,6 +329,15 @@ export const RainaWorkspaceService = {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Failed to patch baseline (${res.status})`);
+    return await json(res);
+  },
+
+  // ----------------- Capability registry (NEW) -----------------
+  async capabilityPackGet(key: string, version: string) {
+    if (!key || !version) throw new Error("key and version are required");
+    const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch capability pack (${res.status})`);
     return await json(res);
   },
 };

@@ -9,7 +9,6 @@ export class RainaPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
 
-  /** NEW: helper the extension can use to emit messages into the UI */
   public static postToWebview(message: unknown) {
     const p = RainaPanel.currentPanel?.panel;
     if (p) p.webview.postMessage(message);
@@ -45,7 +44,6 @@ export class RainaPanel {
       const reply = (ok: boolean, data?: any, error?: string) =>
         this.panel.webview.postMessage({ token, ok, data, error });
 
-      // Dynamic access so this file compiles before we add new service methods.
       const svc = RainaWorkspaceService as any;
       const ensure = (fn: string) => {
         if (typeof svc[fn] !== "function") {
@@ -111,7 +109,7 @@ export class RainaPanel {
             break;
           }
 
-          // ---- Baseline (NEW) ----
+          // ---- Baseline ----
           case "baseline:set": {
             const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
             const setBaselineInputs = ensure("setBaselineInputs");
@@ -135,7 +133,16 @@ export class RainaPanel {
             break;
           }
 
-          // ---- Artifacts (ETag-aware) ----
+          // ---- Capability registry (NEW) ----
+          case "capability:pack:get": {
+            const { key, version } = payload ?? {};
+            const getPack = ensure("capabilityPackGet");
+            const data = await getPack(key, version);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Artifacts ----
           case "artifact:get": {
             const { workspaceId, artifactId } = payload ?? {};
             const out = await RainaWorkspaceService.getArtifact(workspaceId, artifactId);

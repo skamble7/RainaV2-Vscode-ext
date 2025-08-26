@@ -12,6 +12,9 @@ import RunsControls from "./RunsControls";
 import RunsDiffPanel from "./RunsDiffPanel";
 import type { BaselineInfo } from "./utils";
 
+// NEW
+import StepTracker from "@/components/runs/StepTracker";
+
 type Props = { workspaceId: string };
 
 export default function RunsTab({ workspaceId }: Props) {
@@ -214,6 +217,9 @@ export default function RunsTab({ workspaceId }: Props) {
               </Button>
             </div>
           )}
+
+          {/* NEW: live step tracker */}
+          <StepTracker runId={selectedRunId ?? null} />
 
           <RunsDiffPanel
             workspaceId={workspaceId}
