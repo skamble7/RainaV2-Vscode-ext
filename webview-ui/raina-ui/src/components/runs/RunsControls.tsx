@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { DiscoveryRun } from "@/stores/useRunsStore";
+import type { DiscoveryRun } from "@/stores/useRainaStore";
 import { callHost } from "@/lib/host";
 import type { BaselineInfo } from "./utils";
 

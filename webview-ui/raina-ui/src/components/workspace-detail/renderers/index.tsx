@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/index.tsx
 import type { JSX } from "react";
 import DocumentSwitch from "./kinds/DocumentSwitch";           // cam.document (+ doc_type back-compat)
 import ContextMapRenderer from "./kinds/ContextMapRenderer";   // cam.context_map

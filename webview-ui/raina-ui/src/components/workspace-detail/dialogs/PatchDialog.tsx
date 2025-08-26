@@ -1,18 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/workspace-detail/dialogs/PatchDialog.tsx
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 
 export default function PatchDialog({
   open, onOpenChange, artifact,
 }: { open: boolean; onOpenChange: (v: boolean) => void; artifact: any }) {
-  const { patchArtifact, refreshArtifact } = useWorkspaceDetailStore();
-  const [text, setText] = useState(
-    JSON.stringify([{ op: "replace", path: "/title", value: "New Title" }], null, 2)
-  );
+  const { patchArtifact, refreshArtifact } = useRainaStore();
+  const [text, setText] = useState(JSON.stringify([{ op: "replace", path: "/title", value: "New Title" }], null, 2));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,11 +34,9 @@ export default function PatchDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Patch data (JSON Patch)</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Patch data (JSON Patch)</DialogTitle></DialogHeader>
         <div className="text-xs text-neutral-500">
-          Paths start at <code>/</code> inside <code>data</code>. Example for context map notes:
+          Paths start at <code>/</code> inside <code>data</code>. Example:
           <pre className="bg-neutral-950/60 p-2 rounded mt-1 overflow-auto">{`[
   { "op":"replace", "path":"/relationships/2/notes", "value":"New note" }
 ]`}</pre>

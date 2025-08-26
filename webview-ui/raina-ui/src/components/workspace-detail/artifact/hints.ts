@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/artifact/hints.ts
 
 export type Hint =
   | { widget: "select"; options: string[] }

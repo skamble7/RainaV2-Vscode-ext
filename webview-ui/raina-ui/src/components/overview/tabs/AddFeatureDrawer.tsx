@@ -1,4 +1,3 @@
-// src/components/overview/tabs/AddFeatureDrawer.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as React from "react";
 import {
@@ -13,8 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
-import { useRunsStore } from "@/stores/useRunsStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import type { StoryItem } from "./FssTab";
 
 type Props = {
@@ -35,40 +33,30 @@ const DEFAULT_PREFILL: StoryItem = {
   tags: ["domain:reporting", "capability:compliance"],
 };
 
-// Try to infer pack/model from any existing artifact provenance
-function inferPackAndModel(detail: any): {
+// Infer pack/model from existing artifacts’ provenance
+function inferPackAndModel(artifacts: any[]): {
   pack_key?: string;
   pack_version?: string;
   model?: string;
 } {
   try {
-    const arts: any[] = Array.isArray(detail?.artifacts) ? detail.artifacts : [];
-    for (const a of arts) {
+    for (const a of artifacts) {
       const pk = a?.provenance?.pack_key as string | undefined;
       const pv = a?.provenance?.pack_version as string | undefined;
       const model = a?.provenance?.model_id as string | undefined;
       if (pk && pv) return { pack_key: pk, pack_version: pv, model };
     }
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return {};
 }
 
 export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onRunStarted }: Props) {
-  const runs = useRunsStore();
-  const { detail } = useWorkspaceDetailStore();
-
-  const workspaceId =
-    detail?.workspace_id ?? (detail?.workspace?._id as string | undefined);
+  const { currentWorkspaceId, wsDoc, artifacts, startRun } = useRainaStore();
 
   // Initialize & reset with defaults each time the drawer opens
   const [form, setForm] = React.useState<StoryItem>(defaultStory ?? DEFAULT_PREFILL);
   React.useEffect(() => {
-    if (open) {
-      // Use caller-supplied defaults if provided; otherwise use required prefill
-      setForm(defaultStory ?? DEFAULT_PREFILL);
-    }
+    if (open) setForm(defaultStory ?? DEFAULT_PREFILL);
   }, [open, defaultStory]);
 
   const [submitting, setSubmitting] = React.useState(false);
@@ -77,7 +65,7 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
   const onChange = (patch: Partial<StoryItem>) => setForm((f) => ({ ...f, ...patch }));
 
   const handleSubmit = async () => {
-    if (!workspaceId) {
+    if (!currentWorkspaceId) {
       setError("Missing workspace id.");
       return;
     }
@@ -85,7 +73,7 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
     setSubmitting(true);
     try {
       // --- Build inputs strictly from the baseline ---
-      const baseline = (detail as any)?.inputs_baseline ?? {};
+      const baseline = (wsDoc as any)?.inputs_baseline ?? {};
       const avc = baseline?.avc ?? {};
       const pss = baseline?.pss ?? {};
       const baselineStories: StoryItem[] = Array.isArray(baseline?.fss?.stories)
@@ -104,11 +92,11 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
       };
 
       // Infer capability pack + model from existing artifacts’ provenance
-      const inferred = inferPackAndModel(detail);
+      const inferred = inferPackAndModel(artifacts ?? []);
 
       const requestBody = {
         playbook_id: "pb.micro.plus",
-        workspace_id: workspaceId, // required
+        workspace_id: currentWorkspaceId, // required by backend
         title: story.key ? `Add ${story.key}` : "Delta feature",
         description: story.title || "Delta feature",
         inputs: {
@@ -125,8 +113,8 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
         },
       };
 
-      // Start the run (reuses extension plumbing)
-      await runs.start(workspaceId, requestBody);
+      // Start run via unified store
+      await startRun(requestBody);
 
       // Notify parent to switch to Runs tab
       onRunStarted?.();
@@ -218,7 +206,7 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || !workspaceId || !(form.key && form.title)}
+                disabled={submitting || !currentWorkspaceId || !(form.key && form.title)}
               >
                 {submitting ? "Starting run…" : "Start delta run"}
               </Button>

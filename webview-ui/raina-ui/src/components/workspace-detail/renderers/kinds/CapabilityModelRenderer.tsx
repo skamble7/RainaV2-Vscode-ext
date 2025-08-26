@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/kinds/CapabilityModelRenderer.tsx
 export default function CapabilityModelRenderer({
   data,
 }: { data: { capabilities?: any[] } }) {

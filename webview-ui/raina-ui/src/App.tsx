@@ -1,23 +1,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/App.tsx
 import WorkspaceLanding from "@/components/workspace/WorkspaceLanding";
 import WorkspaceDetail from "@/components/workspace-detail/WorkspaceDetail";
-import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
-import { useRunsStore } from "@/stores/useRunsStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import { useVSCodeMessages } from "./lib/vscode";
 
 export default function App() {
-  const { selectedWorkspaceId, select } = useWorkspaceStore();
-  const runs = useRunsStore();
+  const {
+    currentWorkspaceId,
+    switchWorkspace,
+    applyStepEvent,
+    refreshRun,
+  } = useRainaStore();
 
   // React to both generic bus events and dedicated step events
   useVSCodeMessages<any>((msg) => {
     const t = msg?.type;
     const p = msg?.payload ?? {};
-
+    
     if (t === "runs:step") {
       // Directly apply step deltas into the store; no HTTP roundtrip.
-      runs.applyStepEvent(p);
+      applyStepEvent(p);
       return;
     }
 
@@ -25,7 +27,7 @@ export default function App() {
       // If this generic event is actually a step event, handle like above.
       const rk: string | undefined = p?.meta?.routing_key || p?.routing_key;
       if (typeof rk === "string" && rk.startsWith("raina.discovery.step")) {
-        runs.applyStepEvent(p);
+        applyStepEvent(p);
         return;
       }
 
@@ -38,19 +40,17 @@ export default function App() {
         p?.result_summary?.run_id;
 
       if (typeof runId === "string" && runId.length > 0) {
-        runs.refreshOne(runId);
+        refreshRun(runId);
       }
     }
-  }, [runs]);
+  }, [applyStepEvent, refreshRun]);
 
   return (
     <div className="min-h-screen w-screen bg-neutral-950 text-neutral-100">
-      {selectedWorkspaceId ? (
+      {currentWorkspaceId ? (
         <WorkspaceDetail
-          workspaceId={selectedWorkspaceId}
-          onBack={() => {
-            select(undefined);
-          }}
+          workspaceId={currentWorkspaceId}
+          onBack={() => switchWorkspace(undefined)}
         />
       ) : (
         <WorkspaceLanding />

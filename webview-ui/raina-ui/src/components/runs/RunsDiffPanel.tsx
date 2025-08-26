@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { callHost } from "@/lib/host";
-import type { DiscoveryRun } from "@/stores/useRunsStore";
+import type { DiscoveryRun } from "@/stores/useRainaStore";
 import { type Artifact, type BaselineInfo, computeDiff, kindAndName, nkOf } from "./utils";
 
 // Dynamic monaco; don’t crash if not installed
@@ -78,7 +78,7 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
         if (!data) continue;
         map[nkOf(data)] = {
           artifact_id: data.artifact_id,
-          workspace_id: data.workspace_id,
+          workspace_id: (data as any).workspace_id,
           kind: data.kind,
           name: data.name,
           natural_key: data.natural_key,

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { countsOf } from "./utils";
 import { DeltaPill, StatusBadge } from "./Badges";
-import type { DiscoveryRun } from "@/stores/useRunsStore";
+import type { DiscoveryRun } from "@/stores/useRainaStore";
 
 type Props = {
   run: DiscoveryRun;

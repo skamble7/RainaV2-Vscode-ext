@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/workspace-detail/RightPane.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PatchDialog from "./dialogs/PatchDialog.tsx";
@@ -10,19 +9,25 @@ import DeleteDialog from "./dialogs/DeleteDialog.tsx";
 
 export default function RightPane() {
   const {
-    rightOpen, rightMode, closeRight, selectedArtifactId, artifacts,
-    refreshArtifact, loadHistory, detail
-  } = useWorkspaceDetailStore();
+    ui,
+    closeRight,
+    selectedArtifactId,
+    artifacts,
+    refreshArtifact,
+    loadArtifactHistory,
+    wsDoc,
+  } = useRainaStore();
+
+  const { rightOpen, rightMode } = ui;
 
   const [tab, setTab] = useState<"details"|"edit"|"history"|"agent">(rightMode === "agent" ? "agent" : "details");
   useEffect(() => { if (rightMode === "agent") setTab("agent"); }, [rightMode]);
 
   const artifact = useMemo(
-    () => artifacts.find(a => a.artifact_id === selectedArtifactId),
+    () => artifacts.find((a) => a.artifact_id === selectedArtifactId),
     [artifacts, selectedArtifactId]
   );
 
-  // Dialog state
   const [showPatch, setShowPatch] = useState(false);
   const [showReplace, setShowReplace] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -30,9 +35,9 @@ export default function RightPane() {
   const [history, setHistory] = useState<any[] | null>(null);
   useEffect(() => {
     if (tab === "history" && selectedArtifactId) {
-      loadHistory(selectedArtifactId).then(setHistory).catch(() => setHistory([]));
+      loadArtifactHistory(selectedArtifactId).then(setHistory).catch(() => setHistory([]));
     }
-  }, [tab, selectedArtifactId, loadHistory]);
+  }, [tab, selectedArtifactId, loadArtifactHistory]);
 
   if (!rightOpen) return null;
 
@@ -64,10 +69,9 @@ export default function RightPane() {
           />
         )}
         {tab === "history" && <HistoryPanel history={history} />}
-        {tab === "agent" && <AgentConsole workspaceName={detail?.workspace?.name} />}
+        {tab === "agent" && <AgentConsole workspaceName={wsDoc?.workspace?.name} />}
       </div>
 
-      {/* Dialogs */}
       {artifact && (
         <>
           <PatchDialog open={showPatch} onOpenChange={setShowPatch} artifact={artifact} />

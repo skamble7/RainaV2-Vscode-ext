@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/runs/Badges.tsx
 import React from "react";
 
 export function StatusBadge({ status }: { status: string }) {

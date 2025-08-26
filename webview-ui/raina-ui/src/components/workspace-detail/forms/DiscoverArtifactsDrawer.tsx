@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/forms/DiscoverArtifactsDrawer.tsx
 import * as React from "react";
 import { z } from "zod";
 import { useForm, useFieldArray, type Control, type Resolver } from "react-hook-form";
@@ -39,6 +40,10 @@ import { useToast } from "@/hooks/use-toast";
 import { X, Plus } from "lucide-react";
 import { vscode } from "@/lib/vscode";
 import { callHost } from "@/lib/host";
+
+const BASELINE_TITLE = "baseline";
+const BASELINE_DESC =
+  "Baseline discovery to establish the workspace’s initial snapshot—capturing vision, constraints, and seed stories, and generating the first set of architectural artifacts.";
 
 /* ================= Types & Schema ================= */
 
@@ -222,11 +227,16 @@ export default function DiscoverArtifactsDrawer({
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      // Exact body the API expects (include workspace_id in body)
-      const body = { ...values, workspace_id: workspaceId };
+      // Build the exact body the API expects
+      // We also provide a default baseline title/description
+      const body = {
+        ...values,
+        workspace_id: workspaceId,
+        title: BASELINE_TITLE,
+        description: BASELINE_DESC,
+      };
 
       if (vscode.available()) {
-        // ✅ Use the extension bridge with the message type it expects
         await callHost({
           type: "runs:start",
           payload: { workspaceId, requestBody: body },

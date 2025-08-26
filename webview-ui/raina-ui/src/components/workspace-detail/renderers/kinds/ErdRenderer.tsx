@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/kinds/ErdRenderer.tsx
 export default function ErdRenderer({
   data,
 }: { data: { entities?: any[]; relations?: any[] } }) {

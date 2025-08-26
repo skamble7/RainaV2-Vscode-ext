@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/runs/RunsTab.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useRunsStore } from "@/stores/useRunsStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
@@ -18,7 +19,15 @@ import StepTracker from "@/components/runs/StepTracker";
 type Props = { workspaceId: string };
 
 export default function RunsTab({ workspaceId }: Props) {
-  const { items, loading, error, load, delete: del, refreshOne, start, selectedRunId, select } = useRunsStore();
+  const {
+    runs,
+    loadRuns,
+    deleteRun,
+    refreshRun,
+    startRun,
+    selectedRunId,
+    selectRun,
+  } = useRainaStore();
 
   const [q, setQ] = useState("");
   const [showStart, setShowStart] = useState(false);
@@ -49,7 +58,7 @@ export default function RunsTab({ workspaceId }: Props) {
     JSON.stringify(
       {
         playbook_id: "pb.micro.plus",
-        workspace_id: workspaceId,
+        // workspace_id is not required in body; store passes it separately
         inputs: { avc: { vision: [], problem_statements: [], goals: [] }, fss: { stories: [] }, pss: { paradigm: "", style: [], tech_stack: [] } },
         options: { model: "openai:gpt-4o-mini", dry_run: false },
         title: "New discovery run",
@@ -62,12 +71,18 @@ export default function RunsTab({ workspaceId }: Props) {
 
   // load runs & baseline
   useEffect(() => {
-    load(workspaceId);
-  }, [workspaceId, load]);
+    loadRuns(); // store knows currentWorkspaceId
+  }, [loadRuns]);
 
   useEffect(() => {
     refreshBaseline();
   }, [workspaceId]);
+
+  useEffect(() => {
+  if (!selectedRunId && runs.length > 0) {
+    selectRun(runs[0].run_id); // most recent first in your list
+  }
+}, [runs, selectedRunId, selectRun]);
 
   async function refreshBaseline() {
     setBlBusy(true);
@@ -83,30 +98,16 @@ export default function RunsTab({ workspaceId }: Props) {
     }
   }
 
-  // keep workspace_id in JSON
-  useEffect(() => {
-    try {
-      const obj = JSON.parse(startJson);
-      if (obj && obj.workspace_id !== workspaceId) {
-        obj.workspace_id = workspaceId;
-        setStartJson(JSON.stringify(obj, null, 2));
-      }
-    } catch {
-      /* ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
-
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((r) => {
+    if (!needle) return runs;
+    return runs.filter((r) => {
       const title = (r.title || r.result_summary?.title || r.run_id).toLowerCase();
       const desc = (r.description || r.result_summary?.description || "").toLowerCase();
       const hay = `${title} ${desc} ${r.playbook_id} ${r.status}`;
       return hay.includes(needle);
     });
-  }, [q, items]);
+  }, [q, runs]);
 
   return (
     <div className="h-full w-full relative">
@@ -117,7 +118,7 @@ export default function RunsTab({ workspaceId }: Props) {
             <>
               <div className="p-3 flex items-center gap-2">
                 <Input placeholder="Search runs…" value={q} onChange={(e) => setQ(e.target.value)} className="w-full" />
-                <Button onClick={() => load(workspaceId)} disabled={loading}>Refresh</Button>
+                <Button onClick={() => loadRuns()}>Refresh</Button>
                 <Button variant="secondary" onClick={() => setShowStart((s) => !s)}>Start</Button>
                 <Button variant="ghost" size="icon" onClick={() => setCollapsed(true)} title="Collapse runs">
                   <ChevronLeft size={18} />
@@ -131,22 +132,28 @@ export default function RunsTab({ workspaceId }: Props) {
                     <Button size="sm" variant="ghost" onClick={() => setShowStart(false)}>Close</Button>
                   </div>
                   <p className="mt-2 text-sm text-neutral-400">
-                    The JSON is sent to <code className="font-mono">POST /discover/{workspaceId}</code>.
+                    The JSON below becomes the <code className="font-mono">requestBody</code> (the store adds the current workspace id).
                   </p>
-                  <textarea className="mt-2 w-full min-h-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 font-mono text-sm" value={startJson} onChange={(e) => setStartJson(e.target.value)} />
+                  <textarea
+                    className="mt-2 w-full min-h-40 rounded-md border border-neutral-700 bg-neutral-900 p-2 font-mono text-sm"
+                    value={startJson}
+                    onChange={(e) => setStartJson(e.target.value)}
+                  />
                   <div className="mt-2 flex gap-2">
                     <Button
                       onClick={async () => {
                         try {
                           const body = JSON.parse(startJson);
-                          const runId = await start(workspaceId, body);
+                          // Ensure we don't send an extra workspace_id in the body
+                          if (body && "workspace_id" in body) delete body.workspace_id;
+                          const runId = await startRun(body);
                           if (runId) {
-                            await refreshOne(runId);
+                            await refreshRun(runId);
                             setShowStart(false);
-                            select(runId);
+                            selectRun(runId);
                           }
-                        } catch (e) {
-                          // silent; your toast layer can capture if needed
+                        } catch {
+                          /* optional: toast */
                         }
                       }}
                     >
@@ -156,12 +163,8 @@ export default function RunsTab({ workspaceId }: Props) {
                 </div>
               )}
 
-              {error && <div className="px-3 pb-2 text-sm text-red-400">{error}</div>}
-
               <div className="overflow-auto pb-3">
-                {loading && items.length === 0 ? (
-                  <div className="px-3 py-6 text-neutral-400 text-sm">Loading runs…</div>
-                ) : filtered.length === 0 ? (
+                {filtered.length === 0 ? (
                   <div className="px-3 py-6 text-neutral-400 text-sm">{q ? "No runs match your search." : "No runs yet. Start one to see it here."}</div>
                 ) : (
                   <ul className="px-2">
@@ -170,9 +173,9 @@ export default function RunsTab({ workspaceId }: Props) {
                         key={r.run_id}
                         run={r}
                         selected={r.run_id === selectedRunId}
-                        onSelect={(id) => { select(id); /* keep diff right in sync handled in RunsDiffPanel via selectedRunId prop */ }}
-                        onRefresh={refreshOne}
-                        onDelete={del}
+                        onSelect={(id) => { selectRun(id); }}
+                        onRefresh={refreshRun}
+                        onDelete={deleteRun}
                       />
                     ))}
                   </ul>
@@ -218,12 +221,12 @@ export default function RunsTab({ workspaceId }: Props) {
             </div>
           )}
 
-          {/* NEW: live step tracker */}
+          {/* Live step tracker */}
           <StepTracker runId={selectedRunId ?? null} />
 
           <RunsDiffPanel
             workspaceId={workspaceId}
-            runs={items}
+            runs={runs}
             selectedRunId={selectedRunId ?? null}
             baseline={baseline}
           />
