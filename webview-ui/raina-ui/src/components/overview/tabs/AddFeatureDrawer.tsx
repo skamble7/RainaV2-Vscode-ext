@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// webview-ui/raina-ui/src/components/overview/tabs/AddFeatureDrawer.tsx
 import * as React from "react";
 import {
   Drawer,
@@ -13,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useRainaStore } from "@/stores/useRainaStore";
+import { callHost } from "@/lib/host";
 import type { StoryItem } from "./FssTab";
 
 type Props = {
@@ -33,14 +35,14 @@ const DEFAULT_PREFILL: StoryItem = {
   tags: ["domain:reporting", "capability:compliance"],
 };
 
-// Infer pack/model from existing artifacts’ provenance
+// Prefer pack/model from provenance of baseline-generated artifacts
 function inferPackAndModel(artifacts: any[]): {
   pack_key?: string;
   pack_version?: string;
   model?: string;
 } {
   try {
-    for (const a of artifacts) {
+    for (const a of artifacts ?? []) {
       const pk = a?.provenance?.pack_key as string | undefined;
       const pv = a?.provenance?.pack_version as string | undefined;
       const model = a?.provenance?.model_id as string | undefined;
@@ -48,6 +50,14 @@ function inferPackAndModel(artifacts: any[]): {
     }
   } catch { /* ignore */ }
   return {};
+}
+
+// Minimal sanity check for baseline inputs we need
+function hasUsableBaseline(b: any): boolean {
+  if (!b || typeof b !== "object") return false;
+  if (!b.pss || typeof b.pss !== "object") return false;
+  // We require at least paradigm for backend validation
+  return typeof b.pss.paradigm === "string" && b.pss.paradigm.length > 0;
 }
 
 export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onRunStarted }: Props) {
@@ -64,66 +74,112 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
 
   const onChange = (patch: Partial<StoryItem>) => setForm((f) => ({ ...f, ...patch }));
 
+  // Robust workspace id (handles the short race after creating a workspace)
+  const effectiveWorkspaceId =
+    currentWorkspaceId ||
+    (wsDoc as any)?.workspace_id ||
+    (wsDoc as any)?.workspace?._id ||
+    (wsDoc as any)?._id;
+
+  // Pull fresh baseline if the store doesn’t have it yet
+  async function getBaselineInputs(): Promise<{
+    baseline: any;
+    avc: any;
+    pss: any;
+    stories: StoryItem[];
+  }> {
+    let baseline = (wsDoc as any)?.inputs_baseline;
+    if (!hasUsableBaseline(baseline)) {
+      if (!effectiveWorkspaceId) {
+        throw new Error("Workspace not loaded yet. Please wait a moment and try again.");
+      }
+      // Fetch the latest workspace doc and cache it into the store for consistency
+      const fresh = await callHost<any>({ type: "workspace:get", payload: { id: effectiveWorkspaceId } });
+      baseline = fresh?.inputs_baseline;
+      // Update store so the rest of the UI gets the baseline too
+      useRainaStore.setState({
+        wsDoc: fresh,
+        artifacts: Array.isArray(fresh?.artifacts) ? fresh.artifacts : artifacts,
+      });
+    }
+
+    if (!hasUsableBaseline(baseline)) {
+      throw new Error("Baseline inputs aren’t available yet. Run a baseline first (or wait for it to finish).");
+    }
+
+    const avc = baseline?.avc ?? {};
+    const pss = baseline?.pss ?? {};
+    const stories: StoryItem[] = Array.isArray(baseline?.fss?.stories) ? baseline.fss.stories : [];
+    return { baseline, avc, pss, stories };
+  }
+
   const handleSubmit = async () => {
-    if (!currentWorkspaceId) {
-      setError("Missing workspace id.");
+    if (!effectiveWorkspaceId) {
+      setError("Workspace not loaded yet. Please reopen the Overview tab in a second and try again.");
       return;
     }
+
+    // Normalize form story
+    const story: StoryItem = {
+      key: (form.key ?? "").trim(),
+      title: (form.title ?? "").trim(),
+      description: (form.description ?? "").trim(),
+      acceptance_criteria: (form.acceptance_criteria ?? []).map((x) => String(x).trim()).filter(Boolean),
+      tags: (form.tags ?? []).map((x) => String(x).trim()).filter(Boolean),
+    };
+
+    if (!story.key || !story.title) {
+      setError("Please provide both a Story Key and Title.");
+      return;
+    }
+
     setError(undefined);
     setSubmitting(true);
+
     try {
-      // --- Build inputs strictly from the baseline ---
-      const baseline = (wsDoc as any)?.inputs_baseline ?? {};
-      const avc = baseline?.avc ?? {};
-      const pss = baseline?.pss ?? {};
-      const baselineStories: StoryItem[] = Array.isArray(baseline?.fss?.stories)
-        ? baseline.fss.stories
-        : [];
+      // Ensure we have baseline inputs (fresh if needed)
+      const { avc, pss, stories: baselineStories } = await getBaselineInputs();
 
-      // Form story normalization
-      const story: StoryItem = {
-        key: (form.key ?? "").trim(),
-        title: (form.title ?? "").trim(),
-        description: (form.description ?? "").trim(),
-        acceptance_criteria: (form.acceptance_criteria ?? [])
-          .map((x) => String(x).trim())
-          .filter(Boolean),
-        tags: (form.tags ?? []).map((x) => String(x).trim()).filter(Boolean),
-      };
-
-      // Infer capability pack + model from existing artifacts’ provenance
+      // Use the same pack/model as baseline artifacts (fallback to your defaults only if missing)
       const inferred = inferPackAndModel(artifacts ?? []);
 
       const requestBody = {
         playbook_id: "pb.micro.plus",
-        workspace_id: currentWorkspaceId, // required by backend
-        title: story.key ? `Add ${story.key}` : "Delta feature",
+        workspace_id: effectiveWorkspaceId, // required by backend
+        title: `Add ${story.key}`,
         description: story.title || "Delta feature",
         inputs: {
-          avc, // required by backend
+          avc,
           fss: { stories: [...baselineStories, story] },
-          pss, // required by backend
+          pss,
         },
         options: {
           validate: true,
           dry_run: false,
-          ...(inferred.pack_key ? { pack_key: inferred.pack_key } : {}),
-          ...(inferred.pack_version ? { pack_version: inferred.pack_version } : {}),
-          ...(inferred.model ? { model: inferred.model } : {}),
+          ...(inferred.pack_key ? { pack_key: inferred.pack_key } : { pack_key: "svc-micro" }),
+          ...(inferred.pack_version ? { pack_version: inferred.pack_version } : { pack_version: "v1.2" }),
+          ...(inferred.model ? { model: inferred.model } : { model: "openai:gpt-4o-mini" }),
         },
       };
 
-      // Start run via unified store
+      // Start the run through the store (which routes to the host)
       await startRun(requestBody);
 
-      // Notify parent to switch to Runs tab
-      onRunStarted?.();
+      // Persist the new story into the workspace baseline so it shows up immediately
+      await callHost({
+        type: "baseline:patch",
+        payload: {
+          workspaceId: effectiveWorkspaceId,
+          fssStoriesUpsert: [story], // backend merges into inputs_baseline.fss.stories
+        },
+      });
 
-      setSubmitting(false);
+      onRunStarted?.();
       onOpenChange(false);
     } catch (e: any) {
-      setSubmitting(false);
       setError(e?.message ?? "Failed to start delta run");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -206,7 +262,10 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || !currentWorkspaceId || !(form.key && form.title)}
+                disabled={
+                  submitting ||
+                  !((form.key ?? "").trim() && (form.title ?? "").trim())
+                }
               >
                 {submitting ? "Starting run…" : "Start delta run"}
               </Button>

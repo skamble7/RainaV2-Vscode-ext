@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//webview-ui/raina-ui/src/components/workspace-detail/forms/DiscoverArtifactsDrawer.tsx
+// webview-ui/raina-ui/src/components/workspace-detail/forms/DiscoverArtifactsDrawer.tsx
 import * as React from "react";
 import { z } from "zod";
 import { useForm, useFieldArray, type Control, type Resolver } from "react-hook-form";
@@ -40,6 +41,7 @@ import { useToast } from "@/hooks/use-toast";
 import { X, Plus } from "lucide-react";
 import { vscode } from "@/lib/vscode";
 import { callHost } from "@/lib/host";
+import { useRainaStore } from "@/stores/useRainaStore";
 
 const BASELINE_TITLE = "baseline";
 const BASELINE_DESC =
@@ -209,6 +211,7 @@ export default function DiscoverArtifactsDrawer({
   onOpenChange,
 }: Props) {
   const { toast } = useToast();
+  useRainaStore();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(Schema) as unknown as Resolver<FormValues>,
@@ -227,16 +230,18 @@ export default function DiscoverArtifactsDrawer({
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      // Build the exact body the API expects
-      // We also provide a default baseline title/description
+      // Always include workspace_id in the body (backend requires it)
       const body = {
         ...values,
         workspace_id: workspaceId,
-        title: BASELINE_TITLE,
-        description: BASELINE_DESC,
+        // Provide baseline title/description
+        title: "baseline",
+        description:
+          "Baseline discovery to establish the workspace’s initial snapshot—capturing vision, constraints, and seed stories, and generating the first set of architectural artifacts.",
       };
 
       if (vscode.available()) {
+        // Use the extension bridge; it forwards `requestBody` as-is
         await callHost({
           type: "runs:start",
           payload: { workspaceId, requestBody: body },
@@ -251,14 +256,22 @@ export default function DiscoverArtifactsDrawer({
         if (!r.ok) throw new Error(await r.text());
       }
 
-      toast({ title: "Discovery started", description: "Artifacts discovery request submitted successfully." });
+      toast({
+        title: "Discovery started",
+        description: "Artifacts discovery request submitted successfully.",
+      });
       onOpenChange(false);
     } catch (err: any) {
-      toast({ title: "Failed to submit", description: err?.message ?? "Unknown error", variant: "destructive" });
+      toast({
+        title: "Failed to submit",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
