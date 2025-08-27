@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/kinds/AdrIndexRenderer.tsx
 export default function AdrIndexRenderer({
   data,
 }: { data: { adrs?: any[] } }) {

@@ -1,19 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/workspace-detail/dialogs/DeleteDialog.tsx
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import { useState } from "react";
 
 export default function DeleteDialog({
   open, onOpenChange, artifact,
 }: { open: boolean; onOpenChange: (v: boolean) => void; artifact: any }) {
-  const { deleteArtifact } = useWorkspaceDetailStore();
+  const { deleteArtifact } = useRainaStore();
   const [busy, setBusy] = useState(false);
+
   const onConfirm = async () => {
     setBusy(true);
-    try { await deleteArtifact(artifact.artifact_id); onOpenChange(false); }
-    finally { setBusy(false); }
+    try {
+      await deleteArtifact(artifact.artifact_id);
+      onOpenChange(false);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

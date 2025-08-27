@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/workspace-detail/dialogs/ReplaceDialog.tsx
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 
 export default function ReplaceDialog({
   open, onOpenChange, artifact,
 }: { open: boolean; onOpenChange: (v: boolean) => void; artifact: any }) {
-  const { replaceArtifact, refreshArtifact } = useWorkspaceDetailStore();
+  const { replaceArtifact, refreshArtifact } = useRainaStore();
   const [text, setText] = useState(JSON.stringify(artifact?.data ?? {}, null, 2));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +34,7 @@ export default function ReplaceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Replace entire data</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Replace entire data</DialogTitle></DialogHeader>
         <Textarea rows={14} value={text} onChange={(e) => setText(e.target.value)} />
         {error && <div className="text-red-400 text-xs">{error}</div>}
         <DialogFooter>

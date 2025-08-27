@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { DiscoveryRun } from "@/stores/useRunsStore";
+import type { DiscoveryRun } from "@/stores/useRainaStore";
 
 export default function AvcTab({ avc, baselineRun }: { avc: any; baselineRun?: DiscoveryRun }) {
   if (!avc) {
@@ -39,27 +39,13 @@ export default function AvcTab({ avc, baselineRun }: { avc: any; baselineRun?: D
       </Card>
 
       <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader><CardTitle className="text-sm">Non‑functionals</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Non-functionals</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap gap-1">
           {(avc.non_functionals ?? []).map((n: any, i: number) => (
             <Badge key={i} variant="outline" className="border-neutral-700 text-neutral-300">
               {n.type}: {n.target}
             </Badge>
           ))}
-        </CardContent>
-      </Card>
-
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader><CardTitle className="text-sm">Constraints & Assumptions</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div>
-            <div className="text-xs text-neutral-500 mb-1">Constraints</div>
-            {(avc.constraints ?? []).map((c: string, i: number) => <li key={i} className="list-disc ml-4">{c}</li>)}
-          </div>
-          <div>
-            <div className="text-xs text-neutral-500 mb-1">Assumptions</div>
-            {(avc.assumptions ?? []).map((a: string, i: number) => <li key={i} className="list-disc ml-4">{a}</li>)}
-          </div>
         </CardContent>
       </Card>
 

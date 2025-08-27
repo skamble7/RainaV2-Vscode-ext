@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/components/overview/Overview.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
-import { useRunsStore, type DiscoveryRun } from "@/stores/useRunsStore";
+import { useRainaStore, type DiscoveryRun } from "@/stores/useRainaStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import OverviewSummaryCard from "@/components/overview/OverviewSummaryCard";
@@ -23,20 +21,18 @@ const isEmptyObj = (o: unknown) =>
   !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o as any).length === 0;
 
 export default function Overview() {
-  const { detail, setTab: setWorkspaceTab } = useWorkspaceDetailStore();
-  const wsId = (detail as any)?.workspace_id ?? (detail as any)?.workspace?._id;
-  const { items: runs, load: loadRuns, loading: runsLoading } = useRunsStore();
-
-  const [tab, setTab] = useState<"avc" | "fss" | "pss">("fss");
+  const { wsDoc, artifacts, runs, loadRuns, setTab } = useRainaStore();
+  const [tab, setLocalTab] = useState<"avc" | "fss" | "pss">("fss");
 
   useEffect(() => {
-    if (wsId) loadRuns(wsId, { limit: 100, offset: 0 });
+    // loads runs for current workspace (store knows currentWorkspaceId)
+    loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsId]);
+  }, []);
 
   // ---- Determine baseline AVC/PSS/FSS ----
   const { baselineAvc, baselinePss, baselineFss, baselineRun } = useMemo(() => {
-    const bl = (detail as any)?.inputs_baseline;
+    const bl = (wsDoc as any)?.inputs_baseline;
     if (bl && !isEmptyObj(bl)) {
       return {
         baselineAvc: bl.avc,
@@ -54,11 +50,12 @@ export default function Overview() {
       baselineFss: ((candidate as any)?.inputs?.fss?.stories as StoryItem[]) ?? [],
       baselineRun: candidate,
     };
-  }, [detail, runs]);
+  }, [wsDoc, runs]);
 
-  const artifactCount = (detail?.artifacts ?? []).length;
+  const artifactCount = (artifacts ?? []).length;
   const totalFeatures = (baselineFss ?? []).length;
-  const openValidations = (((runs[0] as any)?.result_summary?.validations as any[]) ?? []).length;
+  const openValidations =
+    (((runs[0] as any)?.result_summary?.validations as any[]) ?? []).length;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -67,11 +64,10 @@ export default function Overview() {
         styles={((baselinePss as any)?.style ?? []) as string[]}
         tech={((baselinePss as any)?.tech_stack ?? []) as string[]}
         lastBaselineAt={(baselineRun as any)?.result_summary?.started_at}
-        lastPromotedRunId={(detail as any)?.last_promoted_run_id}
+        lastPromotedRunId={(wsDoc as any)?.last_promoted_run_id}
         featuresCount={totalFeatures}
         artifactsCount={artifactCount}
         validationsCount={openValidations}
-        loading={runsLoading}
       />
 
       <Card className="bg-neutral-900 border-neutral-800">
@@ -79,7 +75,7 @@ export default function Overview() {
           <CardTitle className="text-base text-neutral-200">Project Overview</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "avc" | "fss" | "pss")} className="w-full">
+          <Tabs value={tab} onValueChange={(v) => setLocalTab(v as "avc" | "fss" | "pss")} className="w-full">
             <TabsList className="bg-neutral-800">
               <TabsTrigger value="avc">AVC</TabsTrigger>
               <TabsTrigger value="fss">FSS</TabsTrigger>
@@ -95,8 +91,8 @@ export default function Overview() {
               <FssTab
                 stories={(baselineFss ?? []) as StoryItem[]}
                 onRunStarted={() => {
-                  // ⛳️ switch the *workspace* tabs to "runs"
-                  setWorkspaceTab("runs");
+                  // ⛳️ switch the workspace tabs to "runs" in unified store
+                  setTab("runs");
                 }}
               />
             </TabsContent>

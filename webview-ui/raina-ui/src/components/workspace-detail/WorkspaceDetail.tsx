@@ -1,4 +1,3 @@
-// src/components/workspace-detail/WorkspaceDetail.tsx
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from "react";
@@ -10,15 +9,13 @@ import {
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Search } from "lucide-react";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import ArtifactView from "./artifact/ArtifactView";
 
 // NEW: Runs tab
 import RunsTab from "@/components/runs/RunsTab";
-
-// NEW: Overview tab (moved to top-level components/overview)
+// NEW: Overview tab
 import Overview from "@/components/overview/Overview";
-
 // NEW: discover drawer + toaster
 import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
 import { Toaster } from "@/components/ui/toaster";
@@ -27,39 +24,32 @@ import { Toaster } from "@/components/ui/toaster";
 type Props = { workspaceId: string; onBack: () => void };
 
 export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
-  const { load, tab } = useWorkspaceDetailStore();
+  const { switchWorkspace, ui } = useRainaStore();
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
-  useEffect(() => { load(workspaceId); }, [workspaceId, load]);
+  useEffect(() => { switchWorkspace(workspaceId); }, [workspaceId, switchWorkspace]);
 
-  // Let Overview (and any other UI) open the Discover drawer via a custom event
   useEffect(() => {
-    const handler = (e: Event) => setDiscoverOpen(true);
-    window.addEventListener("raina:openDiscover", handler as any);
-    return () => window.removeEventListener("raina:openDiscover", handler as any);
+    const handler = () => setDiscoverOpen(true);
+    window.addEventListener("raina:openDiscover" as any, handler as any);
+    return () => window.removeEventListener("raina:openDiscover" as any, handler as any);
   }, []);
 
   return (
     <div className="w-screen h-screen flex flex-col bg-neutral-950 text-neutral-100">
-      {/* Toasts */}
       <Toaster />
-
-      {/* Sticky header */}
       <div className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur shrink-0">
         <HeaderBar onBack={onBack} onOpenDiscover={() => setDiscoverOpen(true)} />
       </div>
 
-      {/* Filter row — only for Artifacts tab */}
-      {tab === "artifacts" && (
+      {ui.tab === "artifacts" && (
         <div className="border-b border-neutral-800 shrink-0">
           <TopFilterRow />
         </div>
       )}
 
-      {/* Main body */}
       <BodyTwoColumn workspaceId={workspaceId} />
 
-      {/* Discover Drawer */}
       <DiscoverArtifactsDrawer
         workspaceId={workspaceId}
         open={discoverOpen}
@@ -69,34 +59,29 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   );
 }
 
-/* ===== Header (single-row: back+title | centered tabs | actions) ===== */
+/* ===== Header ===== */
 function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDiscover: () => void }) {
-  const { detail, loading, tab, setTab, updateWorkspaceMeta } = useWorkspaceDetailStore();
+  const { wsDoc, loading, ui, setTab, updateWorkspaceMeta } = useRainaStore();
   const [editing, setEditing] = React.useState(false);
-  const [name, setName] = React.useState(detail?.workspace?.name ?? "");
-  const [desc, setDesc] = React.useState(detail?.workspace?.description ?? "");
+  const [name, setName] = React.useState(wsDoc?.workspace?.name ?? "");
+  const [desc, setDesc] = React.useState(wsDoc?.workspace?.description ?? "");
 
   useEffect(() => {
     if (!editing) {
-      setName(detail?.workspace?.name ?? "");
-      setDesc(detail?.workspace?.description ?? "");
+      setName(wsDoc?.workspace?.name ?? "");
+      setDesc(wsDoc?.workspace?.description ?? "");
     }
-  }, [detail, editing]);
+  }, [wsDoc, editing]);
 
   return (
     <div className="relative max-w-[1400px] mx-auto px-4 py-1.5 flex items-center">
-      {/* Left: Back + Title / Inline edit */}
       <div className="flex items-center gap-3 min-w-0">
         <Button variant="ghost" onClick={onBack}>← Back</Button>
 
         <div className="min-w-0">
           {editing ? (
             <div className="flex items-center gap-2">
-              <Input
-                className="h-8 max-w-xs"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              <Input className="h-8 max-w-xs" value={name} onChange={(e) => setName(e.target.value)} />
               <Button
                 size="sm"
                 className="h-8"
@@ -112,19 +97,15 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
               </Button>
             </div>
           ) : (
-            <div
-              className="text-2xl font-semibold truncate max-w-[40vw]"
-              title={detail?.workspace?.name}
-            >
-              {loading ? "Loading…" : detail?.workspace?.name ?? "Workspace"}
+            <div className="text-2xl font-semibold truncate max-w-[40vw]" title={wsDoc?.workspace?.name}>
+              {loading ? "Loading…" : wsDoc?.workspace?.name ?? "Workspace"}
             </div>
           )}
         </div>
       </div>
 
-      {/* Center: Tabs (absolutely centered to stay true-center) */}
       <div className="absolute left-1/2 -translate-x-1/2">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+        <Tabs value={ui.tab} onValueChange={(v) => setTab(v as any)}>
           <TabsList className="mx-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
@@ -135,22 +116,17 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
         </Tabs>
       </div>
 
-      {/* Right: grouped actions, docked */}
       <div className="ml-auto shrink-0">
         <div className="flex items-center rounded-xl border border-neutral-800 bg-neutral-900/50 overflow-hidden shadow-sm">
-          {/* Discover — now opens the right-side drawer */}
           <Button variant="ghost" className="rounded-none px-4" onClick={onOpenDiscover}>
             Discover
           </Button>
 
           <div className="w-px h-6 bg-neutral-800" />
 
-          {/* Guide */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="rounded-none px-4">
-                Guide
-              </Button>
+              <Button variant="ghost" className="rounded-none px-4">Guide</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem>Architecture Guide</DropdownMenuItem>
@@ -160,12 +136,9 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
 
           <div className="w-px h-6 bg-neutral-800" />
 
-          {/* Export */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="rounded-none px-4">
-                Export
-              </Button>
+              <Button variant="ghost" className="rounded-none px-4">Export</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem>Bundle (.zip)</DropdownMenuItem>
@@ -183,7 +156,7 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
 
 /* ===== Top filter row ===== */
 function TopFilterRow() {
-  const { setQuery, toggleKind, toggleDocType, counts } = useWorkspaceDetailStore();
+  const { setQuery, toggleKind, toggleDocType, counts } = useRainaStore();
   const c = counts();
   return (
     <div className="max-w-[1400px] mx-auto px-4 py-2 flex items-center gap-3">
@@ -218,11 +191,10 @@ function TopFilterRow() {
 /* ===== Two-column body ===== */
 function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
   const {
-    tab, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
-  } = useWorkspaceDetailStore();
+    ui, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
+  } = useRainaStore();
 
-  // Non-artifact tabs
-  if (tab === "overview") {
+  if (ui.tab === "overview") {
     return (
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1400px] mx-auto px-4 py-6">
@@ -231,22 +203,21 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
       </div>
     );
   }
-  if (tab === "conversations") {
+  if (ui.tab === "conversations") {
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
         Conversations (agent threads) coming soon…
       </div>
     );
   }
-  if (tab === "runs") {
-    // FULL-BLEED runs UI (no centered container)
+  if (ui.tab === "runs") {
     return (
       <div className="flex-1 min-h-0">
         <RunsTab workspaceId={workspaceId} />
       </div>
     );
   }
-  if (tab === "timeline") {
+  if (ui.tab === "timeline") {
     return (
       <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
         Timeline coming soon…
@@ -254,7 +225,6 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
     );
   }
 
-  // Default: artifacts two-column
   const list = filteredArtifacts();
 
   return (
@@ -282,13 +252,13 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
                       isSelected ? "border-neutral-700 ring-1 ring-neutral-600" : "border-neutral-800",
                     ].join(" ")}
                     onClick={async () => {
-                      selectArtifact(a.artifact_id);
+                      await selectArtifact(a.artifact_id);
                       await refreshArtifact(a.artifact_id);
                     }}
                     onKeyDown={async (e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        selectArtifact(a.artifact_id);
+                        await selectArtifact(a.artifact_id);
                         await refreshArtifact(a.artifact_id);
                       }
                     }}

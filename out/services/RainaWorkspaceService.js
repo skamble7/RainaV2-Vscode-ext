@@ -1,6 +1,4 @@
 "use strict";
-// src/services/RainaWorkspaceService.ts
-/* eslint-disable curly */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RainaWorkspaceService = void 0;
 function normalizeWorkspace(w) {
@@ -19,6 +17,7 @@ function normalizeWorkspace(w) {
 const API_BASE = "http://127.0.0.1:8010"; // workspace-service
 const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
 // --- helpers ---
 async function json(res) {
     const text = await res.text();
@@ -35,7 +34,7 @@ function qs(params) {
     return s ? `?${s}` : "";
 }
 function getEtag(h) {
-    return h.get("ETag") ?? h.get("etag") ?? undefined; // safety for case variance
+    return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
 exports.RainaWorkspaceService = {
     // ----------------- Workspaces -----------------
@@ -66,7 +65,7 @@ exports.RainaWorkspaceService = {
         if (!res.ok)
             throw new Error(`Failed to get workspace detail (${res.status})`);
         const body = await json(res);
-        return body; // shape matches artifact-service parent response
+        return body;
     },
     // Update workspace metadata (name/description)
     async update(id, patch) {
@@ -80,7 +79,6 @@ exports.RainaWorkspaceService = {
         return await json(res);
     },
     // ----------------- Artifacts -----------------
-    // Create artifact
     async createArtifact(workspaceId, payload) {
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}`, {
             method: "POST",
@@ -94,7 +92,6 @@ exports.RainaWorkspaceService = {
         console.log("[EXT] artifact:create ← ETag", { workspaceId, etag });
         return { data, etag };
     },
-    // List artifacts with optional filters
     async listArtifacts(workspaceId, opts) {
         const url = `${ARTIFACT_BASE}/artifact/${workspaceId}${qs({
             kind: opts?.kind,
@@ -108,7 +105,6 @@ exports.RainaWorkspaceService = {
             throw new Error(`Failed to list artifacts (${res.status})`);
         return await json(res);
     },
-    // Read one (returns body + ETag)
     async getArtifact(workspaceId, artifactId) {
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`);
         if (!res.ok)
@@ -118,7 +114,6 @@ exports.RainaWorkspaceService = {
         console.log("[EXT] artifact:get ← ETag", { workspaceId, artifactId, etag });
         return { data, etag };
     },
-    // HEAD for ETag only
     async headArtifact(workspaceId, artifactId) {
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`, { method: "HEAD" });
         if (!res.ok)
@@ -127,7 +122,6 @@ exports.RainaWorkspaceService = {
         console.log("[EXT] artifact:head ← ETag", { workspaceId, artifactId, etag });
         return etag;
     },
-    // JSON Patch on data (requires If-Match)
     async patchArtifact(workspaceId, artifactId, etag, patch, provenance) {
         console.log("[EXT] artifact:patch → If-Match", { artifactId, ifMatch: etag });
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}/patch`, {
@@ -144,7 +138,6 @@ exports.RainaWorkspaceService = {
         const data = await json(res);
         return { data, etag: newEtag };
     },
-    // Replace entire data (requires If-Match)
     async replaceArtifact(workspaceId, artifactId, etag, dataPayload, provenance) {
         console.log("[EXT] artifact:replace → If-Match", { artifactId, ifMatch: etag });
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`, {
@@ -161,14 +154,12 @@ exports.RainaWorkspaceService = {
         const data = await json(res);
         return { data, etag: newEtag };
     },
-    // Soft delete
     async deleteArtifact(workspaceId, artifactId) {
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}`, { method: "DELETE" });
         console.log("[EXT] artifact:delete ← status", { artifactId, status: res.status });
         if (!(res.ok || res.status === 204))
             throw new Error(`Failed to delete artifact (${res.status})`);
     },
-    // History (list patches)
     async history(workspaceId, artifactId) {
         const res = await fetch(`${ARTIFACT_BASE}/artifact/${workspaceId}/${artifactId}/history`);
         if (!res.ok)
@@ -180,9 +171,7 @@ exports.RainaWorkspaceService = {
     // ----------------- Discovery (Start a run) -----------------
     async startDiscovery(workspaceId, requestBody) {
         const url = `${DISCOVERY_BASE}/discover/${workspaceId}`;
-        // Send exactly what the UI built
         const bodyJson = JSON.stringify(requestBody ?? {});
-        // Debug
         console.log("[EXT] discovery:start →", url);
         console.log("[EXT] discovery:start → body\n", bodyJson);
         const res = await fetch(url, {
@@ -220,6 +209,49 @@ exports.RainaWorkspaceService = {
         const res = await fetch(`${DISCOVERY_BASE}/runs/${runId}`, { method: "DELETE" });
         if (!(res.ok || res.status === 204))
             throw new Error(`Failed to delete run (${res.status})`);
+    },
+    // ----------------- Baseline -----------------
+    async setBaselineInputs(workspaceId, inputs, opts) {
+        const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/baseline-inputs${qs({
+            if_absent_only: opts?.ifAbsentOnly ? "true" : undefined,
+            expected_version: opts?.expectedVersion,
+        })}`;
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(inputs ?? {}),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to set baseline (${res.status})`);
+        return await json(res);
+    },
+    async patchBaselineInputs(workspaceId, payload) {
+        const url = `${ARTIFACT_BASE}/artifact/${workspaceId}/baseline-inputs${qs({
+            expected_version: payload?.expectedVersion,
+        })}`;
+        const body = {
+            avc: payload.avc,
+            pss: payload.pss,
+            fss_stories_upsert: payload.fss_stories_upsert,
+        };
+        const res = await fetch(url, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to patch baseline (${res.status})`);
+        return await json(res);
+    },
+    // ----------------- Capability registry (NEW) -----------------
+    async capabilityPackGet(key, version) {
+        if (!key || !version)
+            throw new Error("key and version are required");
+        const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
+        const res = await fetch(url);
+        if (!res.ok)
+            throw new Error(`Failed to fetch capability pack (${res.status})`);
+        return await json(res);
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

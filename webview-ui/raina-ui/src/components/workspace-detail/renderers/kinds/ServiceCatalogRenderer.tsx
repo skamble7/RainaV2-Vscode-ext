@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/kinds/ServiceCatalogRenderer.tsx
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";

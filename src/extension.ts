@@ -1,3 +1,4 @@
+// src/extension.ts
 import * as vscode from "vscode";
 import { RainaPanel } from "./panels/RainaPanel";
 import { NotificationStream } from "./services/NotificationStream";
@@ -13,19 +14,28 @@ export function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("RAINA Notifications");
   context.subscriptions.push(output);
 
-  // Start WS stream using setting (fallback to localhost)
   const cfg = vscode.workspace.getConfiguration("raina");
   const wsUrl = cfg.get<string>("notificationWsUrl", "ws://localhost:8016/ws");
+
+  const forward = (evt: any) => {
+    // Always forward the raw event
+    RainaPanel.postToWebview({ type: "runs:event", payload: evt });
+
+    // If this is a step event, also forward a targeted message most UIs listen for
+    const rk: string | undefined = evt?.meta?.routing_key || evt?.routing_key;
+    if (typeof rk === "string" && rk.startsWith("raina.discovery.step")) {
+      // Prefer the inner data envelope if present
+      const payload = evt?.data ?? evt;
+      RainaPanel.postToWebview({ type: "runs:step", payload });
+    }
+  };
 
   // NEW: create the stream with onEvent to forward events to the webview
   notifStream = new NotificationStream({
     url: wsUrl!,
     channel: output!,
     autoStart: true,
-    onEvent: (evt: any) => {
-      // Forward all events; UI will decide if it cares (e.g., run updates)
-      RainaPanel.postToWebview({ type: "runs:event", payload: evt });
-    },
+    onEvent: forward,
   });
   context.subscriptions.push({ dispose: () => notifStream?.dispose() });
 
@@ -42,9 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
           url: newUrl!,
           channel: output!,
           autoStart: true,
-          onEvent: (evt: any) => {
-            RainaPanel.postToWebview({ type: "runs:event", payload: evt });
-          },
+          onEvent: forward,
         });
       }
     })
@@ -55,13 +63,12 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("raina.notifications.openOutput", () => output?.show(true))
   );
 
-  // ---- Your existing Activity Bar auto-launch flow --------------------------
+  // ---- Activity Bar auto-launch flow ---------------------------------------
   const openCmd = vscode.commands.registerCommand("raina.open", () => {
     RainaPanel.createOrShow(context.extensionUri);
   });
   context.subscriptions.push(openCmd);
 
-  // Minimal TreeDataProvider backing the Activity Bar view (empty view)
   const provider = new (class implements vscode.TreeDataProvider<vscode.TreeItem> {
     onDidChangeTreeData?: vscode.Event<void | vscode.TreeItem | null | undefined> | undefined;
     getTreeItem(element: vscode.TreeItem) { return element; }

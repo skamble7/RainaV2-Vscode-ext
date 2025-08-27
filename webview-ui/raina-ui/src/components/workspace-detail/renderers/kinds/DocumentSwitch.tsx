@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/components/workspace-detail/renderers/kinds/DocumentSwitch.tsx
 import DocumentRenderer from "./DocumentRenderer";
 import ServiceCatalogRenderer from "./ServiceCatalogRenderer";
 import ApiContractsRenderer from "./ApiContractsRenderer";

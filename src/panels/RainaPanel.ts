@@ -1,3 +1,4 @@
+//src/panels/RainaPanel.ts
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
@@ -8,7 +9,6 @@ export class RainaPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
 
-  /** NEW: helper the extension can use to emit messages into the UI */
   public static postToWebview(message: unknown) {
     const p = RainaPanel.currentPanel?.panel;
     if (p) p.webview.postMessage(message);
@@ -44,7 +44,6 @@ export class RainaPanel {
       const reply = (ok: boolean, data?: any, error?: string) =>
         this.panel.webview.postMessage({ token, ok, data, error });
 
-      // Dynamic access so this file compiles before we add new service methods.
       const svc = RainaWorkspaceService as any;
       const ensure = (fn: string) => {
         if (typeof svc[fn] !== "function") {
@@ -81,7 +80,7 @@ export class RainaPanel {
             break;
           }
 
-          // ---- Runs (NEW) ----
+          // ---- Runs ----
           case "runs:list": {
             const { workspaceId, limit, offset } = payload ?? {};
             const listRuns = ensure("listRuns");
@@ -110,15 +109,40 @@ export class RainaPanel {
             break;
           }
 
-          // ---- Discovery (existing) ----
-          case "discovery:start": {
-            const { workspaceId, options } = payload ?? {};
-            const data = await RainaWorkspaceService.startDiscovery(workspaceId, options);
+          // ---- Baseline ----
+          case "baseline:set": {
+            const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
+            const setBaselineInputs = ensure("setBaselineInputs");
+            const data = await setBaselineInputs(workspaceId, inputs, {
+              ifAbsentOnly,
+              expectedVersion,
+            });
+            reply(true, data);
+            break;
+          }
+          case "baseline:patch": {
+            const { workspaceId, avc, pss, fssStoriesUpsert, expectedVersion } = payload ?? {};
+            const patchBaselineInputs = ensure("patchBaselineInputs");
+            const data = await patchBaselineInputs(workspaceId, {
+              avc,
+              pss,
+              fss_stories_upsert: fssStoriesUpsert,
+              expectedVersion,
+            });
             reply(true, data);
             break;
           }
 
-          // ---- Artifacts (ETag-aware) ----
+          // ---- Capability registry (NEW) ----
+          case "capability:pack:get": {
+            const { key, version } = payload ?? {};
+            const getPack = ensure("capabilityPackGet");
+            const data = await getPack(key, version);
+            reply(true, data);
+            break;
+          }
+
+          // ---- Artifacts ----
           case "artifact:get": {
             const { workspaceId, artifactId } = payload ?? {};
             const out = await RainaWorkspaceService.getArtifact(workspaceId, artifactId);
@@ -191,8 +215,9 @@ export class RainaPanel {
     });
   }
 
-  // Opens a new VS Code tab with diagrams.net embedded and round-trips XML back here.
+  // ... rest of file (Draw.io + getHtml) unchanged ...
   private openDrawioPanel(title: string, xml: string) {
+    // unchanged
     const panel = vscode.window.createWebviewPanel("rainaDrawio", title, vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
@@ -200,7 +225,6 @@ export class RainaPanel {
 
     panel.webview.html = this.getDrawioHtml(panel.webview, xml);
 
-    // Forward saves back to the main webview so UI can persist to artifact-service
     panel.webview.onDidReceiveMessage((msg) => {
       if (msg?.type === "drawio.saved") {
         const updatedXml = String(msg.xml ?? "");
@@ -216,6 +240,7 @@ export class RainaPanel {
   }
 
   private getDrawioHtml(webview: vscode.Webview, xml: string) {
+    // unchanged
     const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
     const MIN_XML = `<mxfile modified="${new Date().toISOString()}" agent="raina" version="20.6.3">
   <diagram name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram>
@@ -250,69 +275,45 @@ export class RainaPanel {
   <script>
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById("editor");
-
-    function postToEmbed(message) {
-      editor.contentWindow.postMessage(JSON.stringify(message), "*");
-    }
-
-    function dbg(kind, data) {
-      vscode.postMessage({ type: "drawio.debug", kind, data });
-    }
-
+    function postToEmbed(message) { editor.contentWindow.postMessage(JSON.stringify(message), "*"); }
+    function dbg(kind, data) { vscode.postMessage({ type: "drawio.debug", kind, data }); }
     window.addEventListener("message", (event) => {
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (!data || !data.event) return;
-
         if (data.event === "init" || data.event === "ready") {
           postToEmbed({ action: "load", xml: atob("${xmlB64}") });
           dbg("loaded", { len: ${xmlForLoad.length} });
         }
-
-        if (data.event === "save") {
-          postToEmbed({ action: "export", format: "xml" });
-        }
-
+        if (data.event === "save") { postToEmbed({ action: "export", format: "xml" }); }
         if (data.event === "export" && data.data) {
           vscode.postMessage({ type: "drawio.saved", xml: data.data });
         }
-
-        if (data.event === "exit") {
-          vscode.postMessage({ type: "drawio.requestClose" });
-        }
-      } catch (e) {
-        dbg("parse_error", String(e));
-      }
+        if (data.event === "exit") { vscode.postMessage({ type: "drawio.requestClose" }); }
+      } catch (e) { dbg("parse_error", String(e)); }
     });
-
-    editor.addEventListener("load", () => {
-      setTimeout(() => postToEmbed({ action: "status" }), 1500);
-    });
+    editor.addEventListener("load", () => { setTimeout(() => postToEmbed({ action: "status" }), 1500); });
   </script>
 </body>
 </html>`;
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
+    // unchanged
     const manifestCandidates = [
       path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
       path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
     ];
-
     const manifestPath = manifestCandidates.find(fs.existsSync);
     if (!manifestPath) {
       vscode.window.showErrorMessage("Vite build not found. Run `npm run build` in raina-ui.");
       return "<html><body><h3>Build missing</h3></body></html>";
     }
-
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-
     const entryKey = manifest["index.html"] ? "index.html" : Object.keys(manifest)[0];
     const entry = manifest[entryKey];
-
     const scriptFile: string = entry.file;
     const cssFile: string | undefined = entry.css?.[0];
-
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "media", "raina-ui", scriptFile)
     );
@@ -340,3 +341,4 @@ ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
 </html>`;
   }
 }
+// ---- Below is copied from webview-ui/raina-ui/src/lib/vscode.ts ----

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Minimal typings for the VS Code webview API
+// webview-ui/raina-ui/src/lib/vscode.ts
 export interface VSCodeAPI {
   postMessage: (message: unknown) => void;
   setState: <T>(newState: T) => void;

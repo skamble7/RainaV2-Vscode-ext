@@ -1,21 +1,28 @@
-// src/components/workspace-detail/artifact/ArtifactView.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { useWorkspaceDetailStore } from "@/stores/useWorkspaceDetailStore";
+import { useRainaStore } from "@/stores/useRainaStore";
 import { ArtifactRenderer } from "../renderers";
 import AutoForm from "../renderers/AutoForm";
 
 const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleString() : "—");
+const fmtVersion = (v: any) =>
+  v == null
+    ? "1"
+    : typeof v === "number"
+    ? String(v)
+    : typeof v === "object" && typeof v.$numberInt === "string"
+    ? v.$numberInt
+    : String(v);
 
 export default function ArtifactView() {
   const {
     artifacts, selectedArtifactId, draftById,
     startEdit, cancelEdit, updateDraft, isDirty, saveDraft, refreshArtifact,
-  } = useWorkspaceDetailStore();
+  } = useRainaStore();
 
   const a = useMemo(
-    () => artifacts.find(x => x.artifact_id === selectedArtifactId),
+    () => artifacts.find((x) => x.artifact_id === selectedArtifactId),
     [artifacts, selectedArtifactId]
   );
   const draft = a ? draftById[a.artifact_id] : undefined;
@@ -29,7 +36,7 @@ export default function ArtifactView() {
           <div className="text-base font-semibold truncate">{a?.name ?? "Select an artifact"}</div>
           {a && (
             <div className="text-xs text-neutral-400 truncate">
-              <code>{a.kind}</code> · v{a.version} · updated {fmtDate(a?.updated_at)}
+              <code>{a.kind}</code> · v{fmtVersion(a.version)} · updated {fmtDate(a?.updated_at)}
             </div>
           )}
         </div>
@@ -47,7 +54,7 @@ export default function ArtifactView() {
         )}
       </div>
 
-      {/* body (no overflow here; parent column scrolls) */}
+      {/* body */}
       <div className="p-4 flex-1 min-h-0">
         {!a ? (
           <div className="text-sm text-neutral-400">Pick an artifact from the list.</div>

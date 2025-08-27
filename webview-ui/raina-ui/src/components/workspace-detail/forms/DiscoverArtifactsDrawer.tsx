@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// webview-ui/raina-ui/src/components/workspace-detail/forms/DiscoverArtifactsDrawer.tsx
 import * as React from "react";
 import { z } from "zod";
 import { useForm, useFieldArray, type Control, type Resolver } from "react-hook-form";
@@ -38,6 +40,12 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { X, Plus } from "lucide-react";
 import { vscode } from "@/lib/vscode";
+import { callHost } from "@/lib/host";
+import { useRainaStore } from "@/stores/useRainaStore";
+
+const BASELINE_TITLE = "baseline";
+const BASELINE_DESC =
+  "Baseline discovery to establish the workspace’s initial snapshot—capturing vision, constraints, and seed stories, and generating the first set of architectural artifacts.";
 
 /* ================= Types & Schema ================= */
 
@@ -189,41 +197,11 @@ const defaultValues: FormValues = {
   options: {
     model: "openai:gpt-4o-mini",
     pack_key: "svc-micro",
-    pack_version: "v1.1",
+    pack_version: "v1.2",
     validate: true,
     dry_run: false,
   },
 };
-
-/* ================= Webview <-> Extension bridge ================= */
-
-function sendVsRequest<T = any>(
-  type: string,
-  payload?: any,
-  timeoutMs = 20000
-): Promise<{ ok: boolean; data?: T; error?: string }> {
-  return new Promise((resolve, reject) => {
-    const token = crypto.randomUUID();
-
-    const onMessage = (event: MessageEvent<any>) => {
-      const msg = event.data;
-      if (msg && msg.token === token) {
-        window.removeEventListener("message", onMessage);
-        resolve({ ok: !!msg.ok, data: msg.data, error: msg.error });
-      }
-    };
-
-    window.addEventListener("message", onMessage);
-    vscode.postMessage({ type, token, payload });
-
-    const t = setTimeout(() => {
-      window.removeEventListener("message", onMessage);
-      reject(new Error("Timed out waiting for extension response"));
-    }, timeoutMs);
-
-    (resolve as any).finally?.(() => clearTimeout(t));
-  });
-}
 
 /* ================= Component ================= */
 
@@ -233,6 +211,7 @@ export default function DiscoverArtifactsDrawer({
   onOpenChange,
 }: Props) {
   const { toast } = useToast();
+  useRainaStore();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(Schema) as unknown as Resolver<FormValues>,
@@ -251,17 +230,24 @@ export default function DiscoverArtifactsDrawer({
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      // Construct the exact body the API expects (include workspace_id in body)
-      const body = { ...values, workspace_id: workspaceId };
+      // Always include workspace_id in the body (backend requires it)
+      const body = {
+        ...values,
+        workspace_id: workspaceId,
+        // Provide baseline title/description
+        title: "baseline",
+        description:
+          "Baseline discovery to establish the workspace’s initial snapshot—capturing vision, constraints, and seed stories, and generating the first set of architectural artifacts.",
+      };
 
       if (vscode.available()) {
-        const res = await sendVsRequest("discovery:start", {
-          workspaceId,
-          options: body, // extension backend sends to /discover/{workspace_id}
+        // Use the extension bridge; it forwards `requestBody` as-is
+        await callHost({
+          type: "runs:start",
+          payload: { workspaceId, requestBody: body },
         });
-        if (!res.ok) throw new Error(res.error || "Discovery start failed");
       } else {
-        // Dev fallback (when running UI outside VS Code)
+        // Dev fallback (UI outside VS Code)
         const r = await fetch(`http://127.0.0.1:8013/discover/${workspaceId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -270,14 +256,22 @@ export default function DiscoverArtifactsDrawer({
         if (!r.ok) throw new Error(await r.text());
       }
 
-      toast({ title: "Discovery started", description: "Artifacts discovery request submitted successfully." });
+      toast({
+        title: "Discovery started",
+        description: "Artifacts discovery request submitted successfully.",
+      });
       onOpenChange(false);
     } catch (err: any) {
-      toast({ title: "Failed to submit", description: err?.message ?? "Unknown error", variant: "destructive" });
+      toast({
+        title: "Failed to submit",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
@@ -661,7 +655,7 @@ export default function DiscoverArtifactsDrawer({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Pack Version</FormLabel>
-                          <FormControl><Input placeholder="v1.1" {...field} /></FormControl>
+                          <FormControl><Input placeholder="v1.2" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
