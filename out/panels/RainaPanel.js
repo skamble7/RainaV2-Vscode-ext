@@ -80,9 +80,8 @@ class RainaPanel {
             };
             try {
                 switch (type) {
-                    // --- (unchanged workspace/runs/baseline/capability/artifact handlers here) ---
                     /* =======================
-                     * NEW: Kind registry bridge
+                     * Kind registry bridge
                      * ======================= */
                     case "registry:kinds:list": {
                         const { limit = 200, offset = 0 } = payload ?? {};
@@ -98,7 +97,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- existing cases below ----
+                    // ---- workspaces ----
                     case "workspace:list": {
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.list();
                         reply(true, data);
@@ -121,6 +120,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- runs ----
                     case "runs:list": {
                         const { workspaceId, limit, offset } = payload ?? {};
                         const listRuns = ensure("listRuns");
@@ -148,6 +148,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- baseline inputs ----
                     case "baseline:set": {
                         const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
                         const setBaselineInputs = ensure("setBaselineInputs");
@@ -164,6 +165,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- capability packs ----
                     case "capability:pack:get": {
                         const { key, version } = payload ?? {};
                         const getPack = ensure("capabilityPackGet");
@@ -171,6 +173,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- artifacts ----
                     case "artifact:get": {
                         const { workspaceId, artifactId } = payload ?? {};
                         const out = await RainaWorkspaceService_1.RainaWorkspaceService.getArtifact(workspaceId, artifactId);
@@ -207,6 +210,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
+                    // ---- draw.io bridge ----
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
                         this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
@@ -227,9 +231,8 @@ class RainaPanel {
             }
         });
     }
-    // ... rest of file (Draw.io + getHtml) unchanged ...
+    // --- Draw.io integration (unchanged) ---
     openDrawioPanel(title, xml) {
-        // unchanged
         const panel = vscode.window.createWebviewPanel("rainaDrawio", title, vscode.ViewColumn.Active, {
             enableScripts: true,
             retainContextWhenHidden: true,
@@ -250,7 +253,6 @@ class RainaPanel {
         });
     }
     getDrawioHtml(webview, xml) {
-        // unchanged
         const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
         const MIN_XML = `<mxfile modified="${new Date().toISOString()}" agent="raina" version="20.6.3">
   <diagram name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram>
@@ -304,7 +306,6 @@ class RainaPanel {
 </html>`;
     }
     getHtmlForWebview(webview) {
-        // unchanged
         const manifestCandidates = [
             path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
             path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),

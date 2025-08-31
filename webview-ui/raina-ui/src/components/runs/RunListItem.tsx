@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// webview-ui/raina-ui/src/components/runs/RunListItem.tsx
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -14,16 +15,17 @@ type Props = {
   onDelete: (runId: string) => void;
 };
 
-export default function RunListItem({
-  run,
-  selected,
-  onSelect,
-  onRefresh,
-  onDelete,
-}: Props) {
-  const title = run.title || run.result_summary?.title || run.run_id;
-  const desc = run.description || run.result_summary?.description || "";
+export default function RunListItem({ run, selected, onSelect, onRefresh, onDelete }: Props) {
+  const title = run.title || run.run_id;
+  const desc = run.description || "";
   const counts = countsOf(run);
+
+  // Be tolerant to various shapes (old/new)
+  const startedAt: string | undefined =
+    (run as any)?.started_at ??
+    (run as any)?.run_summary?.started_at ??
+    (run as any)?.result_summary?.started_at ??
+    undefined;
 
   return (
     <li className="my-1">
@@ -88,9 +90,15 @@ export default function RunListItem({
             <DeltaPill label="updated" value={counts.updated} tone="sky" />
             <DeltaPill label="unchanged" value={counts.unchanged} tone="neutral" />
             <DeltaPill label="retired" value={counts.retired} tone="amber" />
-            <DeltaPill label="deleted" value={counts.deleted} tone="red" />
+            {/* If you track deletes: <DeltaPill label="deleted" value={counts.deleted} tone="red" /> */}
           </div>
         </div>
+
+        {startedAt && (
+          <div className="absolute bottom-2 right-3 text-[10px] text-neutral-500">
+            Started {new Date(startedAt).toLocaleString()}
+          </div>
+        )}
       </div>
     </li>
   );

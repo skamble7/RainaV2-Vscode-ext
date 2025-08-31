@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//webview-ui/raina-ui/src/stores/useRainaStore.ts
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { callHost } from "@/lib/host";
@@ -30,21 +31,55 @@ export type DiscoveryRun = {
   workspace_id: string;
   playbook_id: string;
   status: "created" | "pending" | "running" | "completed" | "failed" | "canceled";
-  model_id?: string | null;
+
+  // Labels
   title?: string | null;
   description?: string | null;
+
+  // Timestamps
   created_at?: string | null;
   updated_at?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
+
+  // Inputs + execution options
+  inputs?: any;
+  options?: {
+    model?: string;
+    validate?: boolean;
+    dry_run?: boolean;
+    pack_key?: string;
+    pack_version?: string;
+    [k: string]: any;
+  };
+
+  // Diffing info
   input_fingerprint?: string | null;
   input_diff?: any;
-  strategy?: string | null;
-  inputs?: any;
-  result_summary?: any | null;
-  artifacts?: any[];
+  strategy?: "baseline" | "delta" | string | null;
+
+  // Artifacts and classification
+  run_artifacts?: any[]; // full objects
+  artifacts_diff?: {
+    new: string[];
+    updated: string[];
+    unchanged: string[];
+    retired: string[];
+  };
+
+  // Aggregated counts
   deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> };
+
+  // Minimal execution summary + logs/validations
+  run_summary?: {
+    validations?: any[];
+    logs?: string[];
+    started_at?: string;
+    completed_at?: string;
+    duration_s?: number | string | { $numberDouble: string };
+  } | null;
+
   error?: string | null;
+
+  // Client-side live step view
   step_events?: StepEvent[];
   live_steps?: Record<string, StepEvent>;
 };
@@ -224,6 +259,8 @@ export const useRainaStore = create<RainaState>((set, get) => ({
   setCapabilityDefaults: (d) => set((s) => ({ capabilityDefaults: { ...s.capabilityDefaults, ...d } })),
   deriveCapabilityDefaults() {
     const { artifacts, runs } = get();
+
+    // Prefer pack info from artifact provenance (often most accurate)
     for (const a of artifacts) {
       const pk = (a as any)?.provenance?.pack_key as string | undefined;
       const pv = (a as any)?.provenance?.pack_version as string | undefined;
@@ -240,9 +277,21 @@ export const useRainaStore = create<RainaState>((set, get) => ({
         break;
       }
     }
-    if (!get().capabilityDefaults.model) {
-      const modelFromRun = runs.find((r) => !!r.model_id)?.model_id ?? undefined;
-      if (modelFromRun) get().setCapabilityDefaults({ model: modelFromRun || undefined });
+
+    // Fallback: derive from any run options
+    if (!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version || !get().capabilityDefaults.model) {
+      for (const r of runs) {
+        const pk = r.options?.pack_key;
+        const pv = r.options?.pack_version;
+        const model = r.options?.model;
+        if (pk && pv && (!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version)) {
+          get().setCapabilityDefaults({ pack_key: pk, pack_version: pv });
+        }
+        if (model && !get().capabilityDefaults.model) {
+          get().setCapabilityDefaults({ model });
+        }
+        if (get().capabilityDefaults.pack_key && get().capabilityDefaults.pack_version && get().capabilityDefaults.model) break;
+      }
     }
   },
 
@@ -343,7 +392,7 @@ export const useRainaStore = create<RainaState>((set, get) => ({
       artifacts: s.artifacts.map((a) => (a.artifact_id === artifactId ? (data as any) : a)),
       etags: { ...s.etags, [artifactId]: etag },
     }));
-    if (!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version) {
+    if (!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version || !get().capabilityDefaults.model) {
       get().deriveCapabilityDefaults();
     }
   },
@@ -449,13 +498,23 @@ export const useRainaStore = create<RainaState>((set, get) => ({
       payload: { workspaceId: ws, limit: 100, offset: 0 },
     });
     set({ runs });
+
     const { selectedRunId } = get();
     if (selectedRunId && !runs.some(r => r.run_id === selectedRunId)) {
       set({ selectedRunId: undefined });
     }
+
+    // Derive model default from any run.options.model if not already known
     if (!get().capabilityDefaults.model) {
-      const modelFromRun = runs.find((r) => !!r.model_id)?.model_id ?? undefined;
+      const modelFromRun = runs.find((r) => !!r.options?.model)?.options?.model ?? undefined;
       if (modelFromRun) get().setCapabilityDefaults({ model: modelFromRun || undefined });
+    }
+    // Also pull pack defaults if missing
+    if (!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version) {
+      const src = runs.find((r) => !!r.options?.pack_key && !!r.options?.pack_version)?.options;
+      if (src?.pack_key && src?.pack_version) {
+        get().setCapabilityDefaults({ pack_key: src.pack_key, pack_version: src.pack_version });
+      }
     }
   },
 
@@ -488,8 +547,16 @@ export const useRainaStore = create<RainaState>((set, get) => ({
       } else {
         set({ runs: [full, ...runs] });
       }
-      if (full?.model_id && !get().capabilityDefaults.model) {
-        get().setCapabilityDefaults({ model: full.model_id || undefined });
+
+      // Update capability defaults if we learned something new from options
+      const model = full?.options?.model;
+      if (model && !get().capabilityDefaults.model) {
+        get().setCapabilityDefaults({ model });
+      }
+      const pk = full?.options?.pack_key;
+      const pv = full?.options?.pack_version;
+      if ((!get().capabilityDefaults.pack_key || !get().capabilityDefaults.pack_version) && pk && pv) {
+        get().setCapabilityDefaults({ pack_key: pk, pack_version: pv });
       }
     } catch (e: any) {
       set({ error: e?.message ?? "Failed to refresh run" });

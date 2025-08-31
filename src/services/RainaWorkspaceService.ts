@@ -36,7 +36,7 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
 const API_BASE = "http://127.0.0.1:8010";       // workspace-service
 const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service (also hosts registry routes)
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
-const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry
 
 type Json = any;
 
@@ -66,22 +66,52 @@ export type DiscoveryRun = {
   run_id: string;
   workspace_id: string;
   playbook_id: string;
-  model_id?: string;
   status: RunStatus;
-  started_at?: string;
-  finished_at?: string;
 
-  // NEW for baseline UI
-  inputs?: any;
-  input_diff?: any;
-  strategy?: string;
-
-  result_summary?: any;
+  // Labels
   title?: string | null;
   description?: string | null;
+
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+
+  // Inputs + options snapshot
+  inputs?: any;
+  options?: any;
+
+  // Diffing and classification
+  input_fingerprint?: string | null;
+  input_diff?: any;
+  strategy?: "baseline" | "delta";
+
+  // Artifacts produced by this run (full objects)
+  run_artifacts?: any[];
+
+  // Classification against baseline using natural keys
+  artifacts_diff?: {
+    new: string[];
+    updated: string[];
+    unchanged: string[];
+    retired: string[];
+  };
+
+  // Aggregated counts
+  deltas?: {
+    counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>>;
+  };
+
+  // Minimal execution summary (no redundant IDs)
+  run_summary?: {
+    validations?: any[];
+    logs?: string[];
+    started_at?: string;
+    completed_at?: string;
+    duration_s?: number | string | { $numberDouble: string };
+  };
+
+  // Error if the run failed
   error?: string | null;
-  artifacts?: any[];
-  deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> };
 };
 
 export type StartDiscoveryResponse = {
@@ -89,7 +119,6 @@ export type StartDiscoveryResponse = {
   run_id: string;
   workspace_id: string;
   playbook_id: string;
-  model_id?: string;
   dry_run?: boolean;
   request_id?: string;
   correlation_id?: string;
@@ -108,7 +137,6 @@ export type KindRegistryItem = {
     version: string;
     json_schema: Json;
   }>;
-  // (other fields elided)
 };
 
 const _kindCache: Record<string, KindRegistryItem | undefined> = Object.create(null);
@@ -351,7 +379,7 @@ export const RainaWorkspaceService = {
     return await json(res);
   },
 
-  // ----------------- Capability registry (existing) -----------------
+  // ----------------- Capability registry -----------------
   async capabilityPackGet(key: string, version: string) {
     if (!key || !version) throw new Error("key and version are required");
     const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
@@ -360,7 +388,7 @@ export const RainaWorkspaceService = {
     return await json(res);
   },
 
-  // ----------------- **KIND REGISTRY (NEW)** -----------------
+  // ----------------- Kind registry -----------------
   async registryKindsList(limit = 200, offset = 0) {
     const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
     if (!res.ok) throw new Error(`Failed to fetch kinds list (${res.status})`);
