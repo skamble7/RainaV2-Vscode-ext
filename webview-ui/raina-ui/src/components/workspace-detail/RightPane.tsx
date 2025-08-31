@@ -1,3 +1,4 @@
+//webview-ui/raina-ui/src/components/workspace-detail/RightPane.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useRainaStore } from "@/stores/useRainaStore";

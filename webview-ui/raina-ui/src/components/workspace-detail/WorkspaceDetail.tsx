@@ -1,6 +1,7 @@
+//webview-ui/raina-ui/src/components/workspace-detail/WorkspaceDetail.tsx
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -156,12 +157,22 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
 
 /* ===== Top filter row ===== */
 function TopFilterRow() {
-  const { setQuery, toggleKind, toggleDocType, counts } = useRainaStore();
+  const { setQuery, toggleKind, counts, wsDoc } = useRainaStore();
   const c = counts();
+
+  const kindsInWorkspace = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of (wsDoc?.artifacts ?? [])) if (a?.kind) s.add(a.kind);
+    return Array.from(s).sort();
+  }, [wsDoc?.artifacts]);
+
   return (
     <div className="max-w-[1400px] mx-auto px-4 py-2 flex items-center gap-3">
-      <div className="text-xs text-neutral-400 shrink-0">
-        Artifacts: <span className="text-neutral-200">{c.artifacts}</span> • Events {c.events} • APIs {c.apis} • NFRs {c.nfrs} • Topology {c.topology} • ADRs {c.adrs}
+      <div className="text-xs text-neutral-400 shrink-0 whitespace-nowrap">
+        Artifacts: <span className="text-neutral-200">{c.total}</span>
+        {Object.entries(c.byCategory).map(([k, v]) => (
+          <span key={k}> • {k} {v}</span>
+        ))}
       </div>
       <div className="flex-1" />
       <div className="relative">
@@ -170,18 +181,12 @@ function TopFilterRow() {
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Kinds</Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => toggleKind("cam.document")}>cam.document</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toggleKind("cam.sequence_diagram")}>cam.sequence_diagram</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Doc Types</Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => toggleDocType("event_catalog")}>event_catalog</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toggleDocType("api_contracts")}>api_contracts</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toggleDocType("nfr_matrix")}>nfr_matrix</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toggleDocType("deployment_topology")}>deployment_topology</DropdownMenuItem>
+        <DropdownMenuContent align="end" className="max-h-72 overflow-auto">
+          {kindsInWorkspace.length === 0 ? (
+            <DropdownMenuItem disabled>No kinds</DropdownMenuItem>
+          ) : kindsInWorkspace.map(k => (
+            <DropdownMenuItem key={k} onClick={() => toggleKind(k)}>{k}</DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -264,8 +269,7 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
                     }}
                   >
                     <div className="text-xs uppercase tracking-wide text-neutral-400">{a.kind}</div>
-                    <div className="font-medium">{a.name}</div>
-                    <div className="text-xs text-neutral-400 mt-1">{describeArtifact(a)}</div>
+                    <div className="font-medium truncate">{a.name}</div>
                   </div>
                 );
               })}
@@ -282,29 +286,4 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
       </div>
     </div>
   );
-}
-
-/* ===== Helpers ===== */
-function describeArtifact(a: any): string | null {
-  if (a?.kind === "cam.sequence_diagram") {
-    const count = a?.data?.artifacts?.length ?? 0;
-    return `${count} sequence(s)`;
-  }
-  if (a?.kind === "cam.document") {
-    const dt = a?.data?.doc_type;
-    if (!dt && Array.isArray(a?.data?.artifacts)) return `${a.data.artifacts.length} embedded artifact(s)`;
-    switch (dt) {
-      case "event_catalog": return `${a?.data?.events?.length ?? 0} event(s)`;
-      case "nfr_matrix": return `${a?.data?.nfrs?.length ?? 0} NFR(s)`;
-      case "api_contracts": return `${a?.data?.services?.length ?? 0} service contract(s)`;
-      case "deployment_topology": return `${a?.data?.environments?.length ?? 0} environment(s)`;
-      case "runbooks_slo": return `${a?.data?.services?.length ?? 0} runbook target(s)`;
-      default:
-        if (a?.data?.contexts && a?.data?.relationships) {
-          return `${a.data.contexts.length} context(s), ${a.data.relationships.length} relationship(s)`;
-        }
-        return null;
-    }
-  }
-  return null;
 }

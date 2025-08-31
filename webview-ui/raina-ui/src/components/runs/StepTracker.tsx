@@ -10,7 +10,7 @@ import { callHost } from "@/lib/host";
 type Props = {
     runId?: string | null;
     className?: string;
-    /** Optional overrides; defaults to svc-micro/v1.2 */
+    /** Optional overrides; defaults to svc-micro/v1.4 */
     packKey?: string;
     packVersion?: string;
     /** Allow collapse */
@@ -31,7 +31,7 @@ export default function StepTracker({
     runId,
     className,
     packKey = "svc-micro",
-    packVersion = "v1.2",
+    packVersion = "v1.4",
     collapsible = true,
 }: Props) {
     const run = useRainaStore((s) => (runId ? s.runs.find((r) => r.run_id === runId) : undefined));

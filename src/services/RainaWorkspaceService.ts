@@ -34,9 +34,11 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
 }
 
 const API_BASE = "http://127.0.0.1:8010";       // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service (also hosts registry routes)
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
 const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
+
+type Json = any;
 
 // --- helpers ---
 async function json<T = any>(res: Response): Promise<T> {
@@ -93,6 +95,23 @@ export type StartDiscoveryResponse = {
   correlation_id?: string;
   message?: string;
 };
+
+/** --- Registry result types --- */
+export type KindRegistryItem = {
+  _id: string;             // e.g. "cam.asset.api_inventory"
+  title: string;
+  summary?: string;
+  category?: string;       // e.g. "asset"
+  status?: "active" | "deprecated" | string;
+  latest_schema_version?: string;
+  schema_versions?: Array<{
+    version: string;
+    json_schema: Json;
+  }>;
+  // (other fields elided)
+};
+
+const _kindCache: Record<string, KindRegistryItem | undefined> = Object.create(null);
 
 export const RainaWorkspaceService = {
   // ----------------- Workspaces -----------------
@@ -332,12 +351,30 @@ export const RainaWorkspaceService = {
     return await json(res);
   },
 
-  // ----------------- Capability registry (NEW) -----------------
+  // ----------------- Capability registry (existing) -----------------
   async capabilityPackGet(key: string, version: string) {
     if (!key || !version) throw new Error("key and version are required");
     const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch capability pack (${res.status})`);
     return await json(res);
+  },
+
+  // ----------------- **KIND REGISTRY (NEW)** -----------------
+  async registryKindsList(limit = 200, offset = 0) {
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
+    if (!res.ok) throw new Error(`Failed to fetch kinds list (${res.status})`);
+    return await json<KindRegistryItem[]>(res);
+  },
+
+  async registryKindGet(key: string): Promise<KindRegistryItem> {
+    if (!key) throw new Error("Kind key required");
+    const cached = _kindCache[key];
+    if (cached) return cached;
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds/${encodeURIComponent(key)}`);
+    if (!res.ok) throw new Error(`Failed to fetch kind ${key} (${res.status})`);
+    const data = await json<KindRegistryItem>(res);
+    _kindCache[key] = data;
+    return data;
   },
 };

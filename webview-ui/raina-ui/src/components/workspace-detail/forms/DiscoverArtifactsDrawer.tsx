@@ -197,7 +197,7 @@ const defaultValues: FormValues = {
   options: {
     model: "openai:gpt-4o-mini",
     pack_key: "svc-micro",
-    pack_version: "v1.2",
+    pack_version: "v1.4",
     validate: true,
     dry_run: false,
   },
@@ -655,7 +655,7 @@ export default function DiscoverArtifactsDrawer({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Pack Version</FormLabel>
-                          <FormControl><Input placeholder="v1.2" {...field} /></FormControl>
+                          <FormControl><Input placeholder="v1.4" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}

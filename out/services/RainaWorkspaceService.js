@@ -15,7 +15,7 @@ function normalizeWorkspace(w) {
     };
 }
 const API_BASE = "http://127.0.0.1:8010"; // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service (also hosts registry routes)
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
 const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
 // --- helpers ---
@@ -36,6 +36,7 @@ function qs(params) {
 function getEtag(h) {
     return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
+const _kindCache = Object.create(null);
 exports.RainaWorkspaceService = {
     // ----------------- Workspaces -----------------
     async list() {
@@ -243,7 +244,7 @@ exports.RainaWorkspaceService = {
             throw new Error(`Failed to patch baseline (${res.status})`);
         return await json(res);
     },
-    // ----------------- Capability registry (NEW) -----------------
+    // ----------------- Capability registry (existing) -----------------
     async capabilityPackGet(key, version) {
         if (!key || !version)
             throw new Error("key and version are required");
@@ -252,6 +253,26 @@ exports.RainaWorkspaceService = {
         if (!res.ok)
             throw new Error(`Failed to fetch capability pack (${res.status})`);
         return await json(res);
+    },
+    // ----------------- **KIND REGISTRY (NEW)** -----------------
+    async registryKindsList(limit = 200, offset = 0) {
+        const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
+        if (!res.ok)
+            throw new Error(`Failed to fetch kinds list (${res.status})`);
+        return await json(res);
+    },
+    async registryKindGet(key) {
+        if (!key)
+            throw new Error("Kind key required");
+        const cached = _kindCache[key];
+        if (cached)
+            return cached;
+        const res = await fetch(`${ARTIFACT_BASE}/registry/kinds/${encodeURIComponent(key)}`);
+        if (!res.ok)
+            throw new Error(`Failed to fetch kind ${key} (${res.status})`);
+        const data = await json(res);
+        _kindCache[key] = data;
+        return data;
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

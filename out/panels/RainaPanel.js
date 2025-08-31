@@ -80,7 +80,25 @@ class RainaPanel {
             };
             try {
                 switch (type) {
-                    // ---- Workspace ----
+                    // --- (unchanged workspace/runs/baseline/capability/artifact handlers here) ---
+                    /* =======================
+                     * NEW: Kind registry bridge
+                     * ======================= */
+                    case "registry:kinds:list": {
+                        const { limit = 200, offset = 0 } = payload ?? {};
+                        const listKinds = ensure("registryKindsList");
+                        const data = await listKinds(limit, offset);
+                        reply(true, data);
+                        break;
+                    }
+                    case "registry:kind:get": {
+                        const { key } = payload ?? {};
+                        const getKind = ensure("registryKindGet");
+                        const data = await getKind(key);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---- existing cases below ----
                     case "workspace:list": {
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.list();
                         reply(true, data);
@@ -103,7 +121,6 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Runs ----
                     case "runs:list": {
                         const { workspaceId, limit, offset } = payload ?? {};
                         const listRuns = ensure("listRuns");
@@ -131,14 +148,10 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Baseline ----
                     case "baseline:set": {
                         const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
                         const setBaselineInputs = ensure("setBaselineInputs");
-                        const data = await setBaselineInputs(workspaceId, inputs, {
-                            ifAbsentOnly,
-                            expectedVersion,
-                        });
+                        const data = await setBaselineInputs(workspaceId, inputs, { ifAbsentOnly, expectedVersion });
                         reply(true, data);
                         break;
                     }
@@ -146,15 +159,11 @@ class RainaPanel {
                         const { workspaceId, avc, pss, fssStoriesUpsert, expectedVersion } = payload ?? {};
                         const patchBaselineInputs = ensure("patchBaselineInputs");
                         const data = await patchBaselineInputs(workspaceId, {
-                            avc,
-                            pss,
-                            fss_stories_upsert: fssStoriesUpsert,
-                            expectedVersion,
+                            avc, pss, fss_stories_upsert: fssStoriesUpsert, expectedVersion,
                         });
                         reply(true, data);
                         break;
                     }
-                    // ---- Capability registry (NEW) ----
                     case "capability:pack:get": {
                         const { key, version } = payload ?? {};
                         const getPack = ensure("capabilityPackGet");
@@ -162,7 +171,6 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Artifacts ----
                     case "artifact:get": {
                         const { workspaceId, artifactId } = payload ?? {};
                         const out = await RainaWorkspaceService_1.RainaWorkspaceService.getArtifact(workspaceId, artifactId);
@@ -199,13 +207,12 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Draw.io panel ----
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
                         this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
+                        reply(true, { ok: true });
                         break;
                     }
-                    // ---- Misc / dev pings ----
                     case "hello": {
                         reply(true, { ok: true });
                         break;

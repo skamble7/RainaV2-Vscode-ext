@@ -1,6 +1,7 @@
+
+// webview-ui/raina-ui/src/lib/host.ts
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// webview-ui/raina-ui/src/lib/host.ts
 import { vscode } from "@/lib/vscode";
 import { useEffect } from "react";
 
@@ -31,14 +32,8 @@ export type HostReq =
   // Artifacts
   | { type: "artifact:get"; payload: { workspaceId: string; artifactId: string } }
   | { type: "artifact:head"; payload: { workspaceId: string; artifactId: string } }
-  | {
-      type: "artifact:patch";
-      payload: { workspaceId: string; artifactId: string; etag: string; patch: any[]; provenance?: any };
-    }
-  | {
-      type: "artifact:replace";
-      payload: { workspaceId: string; artifactId: string; etag: string; dataPayload: any; provenance?: any };
-    }
+  | { type: "artifact:patch"; payload: { workspaceId: string; artifactId: string; etag: string; patch: any[]; provenance?: any } }
+  | { type: "artifact:replace"; payload: { workspaceId: string; artifactId: string; etag: string; dataPayload: any; provenance?: any } }
   | { type: "artifact:delete"; payload: { workspaceId: string; artifactId: string } }
   | { type: "artifact:history"; payload: { workspaceId: string; artifactId: string } }
 
@@ -49,23 +44,15 @@ export type HostReq =
   | { type: "runs:start"; payload: { workspaceId: string; requestBody: any } }
 
   // Baseline
-  | {
-      type: "baseline:set";
-      payload: { workspaceId: string; inputs: any; ifAbsentOnly?: boolean; expectedVersion?: number };
-    }
-  | {
-      type: "baseline:patch";
-      payload: {
-        workspaceId: string;
-        avc?: any;
-        pss?: any;
-        fssStoriesUpsert?: any[];
-        expectedVersion?: number;
-      };
-    }
+  | { type: "baseline:set"; payload: { workspaceId: string; inputs: any; ifAbsentOnly?: boolean; expectedVersion?: number } }
+  | { type: "baseline:patch"; payload: { workspaceId: string; avc?: any; pss?: any; fssStoriesUpsert?: any[]; expectedVersion?: number } }
 
-  // Capability registry (NEW)
-  | { type: "capability:pack:get"; payload: { key: string; version: string } };
+  // Capability registry (existing)
+  | { type: "capability:pack:get"; payload: { key: string; version: string } }
+
+  // **NEW: Kind registry**
+  | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
+  | { type: "registry:kind:get"; payload: { key: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");
@@ -77,20 +64,16 @@ export function callHost<T>(req: HostReq): Promise<T> {
   return p;
 }
 
-// Optional niceties unchanged...
+// (useVSCodeMessages unchanged below)
 export type OutgoingMessage<T = any> = { type: string; payload?: T };
 export type IncomingMessage<T = any> = { type: string; payload?: T };
 
-export function useVSCodeMessages<T = any>(
-  handler: (message: IncomingMessage<T>) => void,
-  deps: unknown[] = []
-) {
+export function useVSCodeMessages<T = any>(handler: (message: IncomingMessage<T>) => void, deps: unknown[] = []) {
   useEffect(() => {
-    const onMessage = (event: MessageEvent<IncomingMessage<T>>) => {
-      handler(event.data);
-    };
+    const onMessage = (event: MessageEvent<IncomingMessage<T>>) => { handler(event.data); };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }
+

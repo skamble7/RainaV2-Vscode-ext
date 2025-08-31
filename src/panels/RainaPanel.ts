@@ -16,17 +16,14 @@ export class RainaPanel {
 
   public static createOrShow(extensionUri: vscode.Uri) {
     const column = vscode.ViewColumn.One;
-
     if (RainaPanel.currentPanel) {
       RainaPanel.currentPanel.panel.reveal(column);
       return;
     }
-
     const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
     });
-
     RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
   }
 
@@ -47,40 +44,39 @@ export class RainaPanel {
       const svc = RainaWorkspaceService as any;
       const ensure = (fn: string) => {
         if (typeof svc[fn] !== "function") {
-          throw new Error(
-            `Backend method '${fn}' is not implemented yet. (Add it in src/services/RainaWorkspaceService.ts)`
-          );
+          throw new Error(`Backend method '${fn}' is not implemented yet. (Add it in src/services/RainaWorkspaceService.ts)`);
         }
         return svc[fn].bind(RainaWorkspaceService);
       };
 
       try {
         switch (type) {
-          // ---- Workspace ----
-          case "workspace:list": {
-            const data = await RainaWorkspaceService.list();
+          // --- (unchanged workspace/runs/baseline/capability/artifact handlers here) ---
+
+          /* =======================
+           * NEW: Kind registry bridge
+           * ======================= */
+          case "registry:kinds:list": {
+            const { limit = 200, offset = 0 } = payload ?? {};
+            const listKinds = ensure("registryKindsList");
+            const data = await listKinds(limit, offset);
             reply(true, data);
             break;
           }
-          case "workspace:create": {
-            const data = await RainaWorkspaceService.create(payload);
-            reply(true, data);
-            break;
-          }
-          case "workspace:get": {
-            const { id } = payload ?? {};
-            const data = await RainaWorkspaceService.get(id);
-            reply(true, data);
-            break;
-          }
-          case "workspace:update": {
-            const { id, patch } = payload ?? {};
-            const data = await RainaWorkspaceService.update(id, patch);
+          case "registry:kind:get": {
+            const { key } = payload ?? {};
+            const getKind = ensure("registryKindGet");
+            const data = await getKind(key);
             reply(true, data);
             break;
           }
 
-          // ---- Runs ----
+          // ---- existing cases below ----
+          case "workspace:list": { const data = await RainaWorkspaceService.list(); reply(true, data); break; }
+          case "workspace:create": { const data = await RainaWorkspaceService.create(payload); reply(true, data); break; }
+          case "workspace:get": { const { id } = payload ?? {}; const data = await RainaWorkspaceService.get(id); reply(true, data); break; }
+          case "workspace:update": { const { id, patch } = payload ?? {}; const data = await RainaWorkspaceService.update(id, patch); reply(true, data); break; }
+
           case "runs:list": {
             const { workspaceId, limit, offset } = payload ?? {};
             const listRuns = ensure("listRuns");
@@ -88,35 +84,14 @@ export class RainaPanel {
             reply(true, data);
             break;
           }
-          case "runs:get": {
-            const { runId } = payload ?? {};
-            const getRun = ensure("getRun");
-            const data = await getRun(runId);
-            reply(true, data);
-            break;
-          }
-          case "runs:delete": {
-            const { runId } = payload ?? {};
-            const deleteRun = ensure("deleteRun");
-            await deleteRun(runId);
-            reply(true, { ok: true });
-            break;
-          }
-          case "runs:start": {
-            const { workspaceId, requestBody } = payload ?? {};
-            const data = await RainaWorkspaceService.startDiscovery(workspaceId, requestBody);
-            reply(true, data);
-            break;
-          }
+          case "runs:get": { const { runId } = payload ?? {}; const getRun = ensure("getRun"); const data = await getRun(runId); reply(true, data); break; }
+          case "runs:delete": { const { runId } = payload ?? {}; const deleteRun = ensure("deleteRun"); await deleteRun(runId); reply(true, { ok: true }); break; }
+          case "runs:start": { const { workspaceId, requestBody } = payload ?? {}; const data = await RainaWorkspaceService.startDiscovery(workspaceId, requestBody); reply(true, data); break; }
 
-          // ---- Baseline ----
           case "baseline:set": {
             const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
             const setBaselineInputs = ensure("setBaselineInputs");
-            const data = await setBaselineInputs(workspaceId, inputs, {
-              ifAbsentOnly,
-              expectedVersion,
-            });
+            const data = await setBaselineInputs(workspaceId, inputs, { ifAbsentOnly, expectedVersion });
             reply(true, data);
             break;
           }
@@ -124,16 +99,12 @@ export class RainaPanel {
             const { workspaceId, avc, pss, fssStoriesUpsert, expectedVersion } = payload ?? {};
             const patchBaselineInputs = ensure("patchBaselineInputs");
             const data = await patchBaselineInputs(workspaceId, {
-              avc,
-              pss,
-              fss_stories_upsert: fssStoriesUpsert,
-              expectedVersion,
+              avc, pss, fss_stories_upsert: fssStoriesUpsert, expectedVersion,
             });
             reply(true, data);
             break;
           }
 
-          // ---- Capability registry (NEW) ----
           case "capability:pack:get": {
             const { key, version } = payload ?? {};
             const getPack = ensure("capabilityPackGet");
@@ -142,68 +113,31 @@ export class RainaPanel {
             break;
           }
 
-          // ---- Artifacts ----
-          case "artifact:get": {
-            const { workspaceId, artifactId } = payload ?? {};
-            const out = await RainaWorkspaceService.getArtifact(workspaceId, artifactId);
-            reply(true, out);
-            break;
-          }
-          case "artifact:head": {
-            const { workspaceId, artifactId } = payload ?? {};
-            const etag = await RainaWorkspaceService.headArtifact(workspaceId, artifactId);
-            reply(true, { etag });
-            break;
-          }
+          case "artifact:get": { const { workspaceId, artifactId } = payload ?? {}; const out = await RainaWorkspaceService.getArtifact(workspaceId, artifactId); reply(true, out); break; }
+          case "artifact:head": { const { workspaceId, artifactId } = payload ?? {}; const etag = await RainaWorkspaceService.headArtifact(workspaceId, artifactId); reply(true, { etag }); break; }
           case "artifact:patch": {
             const { workspaceId, artifactId, etag, patch, provenance } = payload ?? {};
-            const out = await RainaWorkspaceService.patchArtifact(
-              workspaceId,
-              artifactId,
-              etag,
-              patch,
-              provenance
-            );
+            const out = await RainaWorkspaceService.patchArtifact(workspaceId, artifactId, etag, patch, provenance);
             reply(true, out);
             break;
           }
           case "artifact:replace": {
             const { workspaceId, artifactId, etag, dataPayload, provenance } = payload ?? {};
-            const out = await RainaWorkspaceService.replaceArtifact(
-              workspaceId,
-              artifactId,
-              etag,
-              dataPayload,
-              provenance
-            );
+            const out = await RainaWorkspaceService.replaceArtifact(workspaceId, artifactId, etag, dataPayload, provenance);
             reply(true, out);
             break;
           }
-          case "artifact:delete": {
-            const { workspaceId, artifactId } = payload ?? {};
-            await RainaWorkspaceService.deleteArtifact(workspaceId, artifactId);
-            reply(true, { ok: true });
-            break;
-          }
-          case "artifact:history": {
-            const { workspaceId, artifactId } = payload ?? {};
-            const data = await RainaWorkspaceService.history(workspaceId, artifactId);
-            reply(true, data);
-            break;
-          }
+          case "artifact:delete": { const { workspaceId, artifactId } = payload ?? {}; await RainaWorkspaceService.deleteArtifact(workspaceId, artifactId); reply(true, { ok: true }); break; }
+          case "artifact:history": { const { workspaceId, artifactId } = payload ?? {}; const data = await RainaWorkspaceService.history(workspaceId, artifactId); reply(true, data); break; }
 
-          // ---- Draw.io panel ----
           case "raina.openDrawio": {
             const { title, xml } = payload ?? {};
             this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
-            break;
-          }
-
-          // ---- Misc / dev pings ----
-          case "hello": {
             reply(true, { ok: true });
             break;
           }
+
+          case "hello": { reply(true, { ok: true }); break; }
 
           default:
             reply(false, undefined, `Unhandled message type: ${type}`);
