@@ -3,15 +3,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRainaStore } from "@/stores/useRainaStore";
 import { Button } from "@/components/ui/button";
+import { callHost } from "@/lib/host";
 
 /**
  * ArtifactView (no History tab)
  * - Single component that renders ANY artifact based on its JSON Schema.
- * - Fetches the kind schema from registry: /registry/kinds/<key>
- * - Renders:
- *    • Arrays of uniform objects => responsive table
- *    • Objects => key/value cards (nested arrays handled recursively)
- *    • Fallback => JSON pretty print
+ * - Special handling for cam.diagram.* kinds (Draw.io):
+ *    • Shows language + quick preview (nodes/edges tables, XML preview)
+ *    • Header-only "Open in Draw.io" button (no duplicate in body)
+ * - Otherwise falls back to schema-driven rendering.
  */
 
 export default function ArtifactView() {
@@ -33,7 +33,7 @@ export default function ArtifactView() {
       const reg = await getKindSchema(artifact.kind);
       if (cancelled) return;
       const latest =
-        reg?.schema_versions?.find((v) => v.version === reg.latest_schema_version) ??
+        reg?.schema_versions?.find((v: any) => v.version === reg.latest_schema_version) ??
         reg?.schema_versions?.[0];
       setSchema(latest?.json_schema ?? null);
     }
@@ -47,6 +47,27 @@ export default function ArtifactView() {
     return <div className="p-4 text-sm text-neutral-400">Select an artifact to view.</div>;
   }
 
+  const isDiagram = (artifact.kind || "").startsWith("cam.diagram.");
+  const lang = (artifact.data as any)?.language;
+  const isDrawio = isDiagram && lang === "drawio";
+  const drawioXml = (artifact.data as any)?.instructions ?? "";
+
+  // Plain functions with internal guards (no hooks after early return)
+  const handleRefresh = () => {
+    if (!artifact) return;
+    return refreshArtifact(artifact.artifact_id);
+  };
+
+  const handleOpenDrawio = () => {
+    if (!artifact) return;
+    const title = artifact.name || "Diagram";
+    const xml = String(drawioXml ?? "");
+    return callHost<{ ok: boolean }>({
+      type: "raina.openDrawio",
+      payload: { title, xml },
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-2 border-b border-neutral-800 flex items-center justify-between">
@@ -54,18 +75,27 @@ export default function ArtifactView() {
           <div className="text-xs uppercase tracking-wide text-neutral-400 truncate">
             {artifact.kind}
           </div>
-        {/* name */}
+          {/* name */}
           <div className="font-medium truncate">{artifact.name}</div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => refreshArtifact(artifact.artifact_id)}>
+          {isDrawio && (
+            <Button size="sm" onClick={handleOpenDrawio}>
+              Open in Draw.io
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={handleRefresh}>
             Refresh
           </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        <SchemaDrivenRenderer data={artifact.data} schema={schema} />
+        {isDrawio ? (
+          <DrawioDiagramRenderer data={artifact.data} />
+        ) : (
+          <SchemaDrivenRenderer data={artifact.data} schema={schema} />
+        )}
       </div>
 
       <div className="px-4 py-2 border-t border-neutral-800 text-xs text-neutral-500">
@@ -76,7 +106,73 @@ export default function ArtifactView() {
 }
 
 /* =========================
- * Schema-driven renderer
+ * Draw.io (diagram) renderer
+ * ========================= */
+
+function DrawioDiagramRenderer({ data }: { data: any }) {
+  const xml: string = data?.instructions ?? "";
+  const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
+  const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+  const edges = Array.isArray(data?.edges) ? data.edges : [];
+
+  return (
+    <div className="space-y-4">
+      {/* Quick meta row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <KeyValue k="doc_type" v={data?.doc_type ?? "—"} />
+        <KeyValue k="language" v={data?.language ?? "—"} />
+      </div>
+
+      {/* Nodes table */}
+      {nodes.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">nodes</div>
+          <div className="rounded-xl border border-neutral-800 overflow-auto">
+            <RenderArray data={nodes} itemSchema={null} />
+          </div>
+        </div>
+      )}
+
+      {/* Edges table */}
+      {edges.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">edges</div>
+          <div className="rounded-xl border border-neutral-800 overflow-auto">
+            <RenderArray data={edges} itemSchema={null} />
+          </div>
+        </div>
+      )}
+
+      {/* XML preview (collapsed by default) */}
+      <XMLPreview title={hasMx ? "Draw.io XML (instructions)" : "Instructions"} xml={xml} />
+    </div>
+  );
+}
+
+function XMLPreview({ title, xml }: { title: string; xml: string }) {
+  const [open, setOpen] = useState(false);
+  const shown = (xml || "").split("\n").slice(0, open ? undefined : 18).join("\n");
+  const truncated = (xml || "").split("\n").length > 18;
+
+  return (
+    <div className="rounded-xl border border-neutral-800 p-3 bg-neutral-950/50">
+      <div className="flex items-center justify-between">
+        <div className="text-xs uppercase tracking-wide text-neutral-400">{title}</div>
+        {truncated && (
+          <Button variant="ghost" size="sm" onClick={() => setOpen((s) => !s)}>
+            {open ? "Collapse" : "Expand"}
+          </Button>
+        )}
+      </div>
+      <pre className="text-xs mt-2 bg-neutral-950/60 rounded p-2 overflow-auto">
+        {shown || "—"}
+      </pre>
+    </div>
+  );
+}
+
+/* =========================
+ * Schema-driven renderer (fallback)
  * ========================= */
 
 function SchemaDrivenRenderer({ data, schema }: { data: any; schema: any | null }) {
@@ -113,30 +209,28 @@ function RenderArray({ data, itemSchema }: { data: any[]; itemSchema: any }) {
 
   if (isUniformObjectArray && firstProps.length > 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-neutral-950 text-neutral-400">
-            <tr>
+      <table className="w-full text-sm">
+        <thead className="bg-neutral-950 text-neutral-400">
+          <tr>
+            {firstProps.map((h) => (
+              <th key={h} className="text-left p-2">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="border-t border-neutral-800">
               {firstProps.map((h) => (
-                <th key={h} className="text-left p-2">
-                  {h}
-                </th>
+                <td key={h} className="p-2 align-top">
+                  {renderCell(r[h])}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-t border-neutral-800">
-                {firstProps.map((h) => (
-                  <td key={h} className="p-2 align-top">
-                    {renderCell(r[h])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     );
   }
 
@@ -161,14 +255,14 @@ function RenderObject({ data, objSchema }: { data: Record<string, any>; objSchem
   // Order props using schema.properties if available; else natural order
   const order = objSchema?.properties ? Object.keys(objSchema.properties) : Object.keys(data);
 
-  // Special case: if the object looks like a document with a big array field (e.g. endpoints), prefer a primary table
+  // Special case: if the object looks like a document with a big array field, prefer a primary table
   const arrayKeys = order.filter((k) => Array.isArray(data[k]));
   const primaryArrayKey =
     arrayKeys.find((k) => isUniformObjectArray(data[k])) || arrayKeys[0];
 
   return (
     <div className="space-y-4">
-      {/* Show scalar fields as key/value */}
+      {/* Scalars */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {order
           .filter((k) => !Array.isArray(data[k]) && !isPlainObject(data[k]))
@@ -177,7 +271,7 @@ function RenderObject({ data, objSchema }: { data: Record<string, any>; objSchem
           ))}
       </div>
 
-      {/* Show nested objects as sub-cards */}
+      {/* Nested objects */}
       {order
         .filter((k) => isPlainObject(data[k]))
         .map((k) => (
@@ -187,24 +281,28 @@ function RenderObject({ data, objSchema }: { data: Record<string, any>; objSchem
           </div>
         ))}
 
-      {/* If there is a prominent array, render it prominently as table */}
+      {/* Primary array */}
       {primaryArrayKey && Array.isArray(data[primaryArrayKey]) && (
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-wide text-neutral-400">{primaryArrayKey}</div>
-          <RenderArray
-            data={data[primaryArrayKey]}
-            itemSchema={objSchema?.properties?.[primaryArrayKey]?.items}
-          />
+          <div className="rounded-xl border border-neutral-800 overflow-auto">
+            <RenderArray
+              data={data[primaryArrayKey]}
+              itemSchema={objSchema?.properties?.[primaryArrayKey]?.items}
+            />
+          </div>
         </div>
       )}
 
-      {/* Render any remaining arrays as lists */}
+      {/* Other arrays */}
       {arrayKeys
         .filter((k) => k !== primaryArrayKey)
         .map((k) => (
           <div key={k} className="space-y-2">
             <div className="text-xs uppercase tracking-wide text-neutral-400">{k}</div>
-            <RenderArray data={data[k]} itemSchema={objSchema?.properties?.[k]?.items} />
+            <div className="rounded-xl border border-neutral-800 overflow-auto">
+              <RenderArray data={data[k]} itemSchema={objSchema?.properties?.[k]?.items} />
+            </div>
           </div>
         ))}
     </div>

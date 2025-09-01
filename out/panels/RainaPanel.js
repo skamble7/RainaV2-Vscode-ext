@@ -34,11 +34,12 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RainaPanel = void 0;
-//src/panels/RainaPanel.ts
+// src/panels/RainaPanel.ts
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const RainaWorkspaceService_1 = require("../services/RainaWorkspaceService");
+const DrawioPanel_1 = require("./DrawioPanel");
 class RainaPanel {
     static currentPanel;
     panel;
@@ -57,6 +58,8 @@ class RainaPanel {
         const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
+            // 👇 prevents VS Code from destroying the webview when you switch tabs
+            retainContextWhenHidden: true,
         });
         RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
     }
@@ -210,10 +213,10 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- draw.io bridge ----
+                    // ---- Draw.io: delegate to DrawioPanel ----
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
-                        this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
+                        DrawioPanel_1.DrawioPanel.open(title || "Diagram", String(xml ?? ""));
                         reply(true, { ok: true });
                         break;
                     }
@@ -230,80 +233,6 @@ class RainaPanel {
                 reply(false, undefined, msg);
             }
         });
-    }
-    // --- Draw.io integration (unchanged) ---
-    openDrawioPanel(title, xml) {
-        const panel = vscode.window.createWebviewPanel("rainaDrawio", title, vscode.ViewColumn.Active, {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-        });
-        panel.webview.html = this.getDrawioHtml(panel.webview, xml);
-        panel.webview.onDidReceiveMessage((msg) => {
-            if (msg?.type === "drawio.saved") {
-                const updatedXml = String(msg.xml ?? "");
-                this.panel.webview.postMessage({
-                    type: "drawio.saved",
-                    payload: { title, xml: updatedXml },
-                });
-                vscode.window.showInformationMessage("Draw.io diagram exported.");
-            }
-            else if (msg?.type === "drawio.requestClose") {
-                panel.dispose();
-            }
-        });
-    }
-    getDrawioHtml(webview, xml) {
-        const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
-        const MIN_XML = `<mxfile modified="${new Date().toISOString()}" agent="raina" version="20.6.3">
-  <diagram name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram>
-</mxfile>`;
-        const xmlForLoad = hasMx ? xml : MIN_XML;
-        const xmlB64 = Buffer.from(xmlForLoad, "utf8").toString("base64");
-        const EMBED_URL = "https://embed.diagrams.net/?embed=1&ui=atlas&spin=1&proto=json&saveandexit=1&noexit=1";
-        const csp = `
-    default-src 'none';
-    img-src ${webview.cspSource} https: data:;
-    frame-src https://embed.diagrams.net https://app.diagrams.net;
-    script-src ${webview.cspSource} 'unsafe-inline';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    connect-src https:;
-    font-src https: data:;
-  `.replace(/\n/g, " ");
-        return `<!doctype html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Draw.io</title>
-  <style>html,body,iframe{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:#0a0a0a}</style>
-</head>
-<body>
-  <iframe id="editor" src="${EMBED_URL}" allow="clipboard-read; clipboard-write"></iframe>
-  <script>
-    const vscode = acquireVsCodeApi();
-    const editor = document.getElementById("editor");
-    function postToEmbed(message) { editor.contentWindow.postMessage(JSON.stringify(message), "*"); }
-    function dbg(kind, data) { vscode.postMessage({ type: "drawio.debug", kind, data }); }
-    window.addEventListener("message", (event) => {
-      try {
-        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (!data || !data.event) return;
-        if (data.event === "init" || data.event === "ready") {
-          postToEmbed({ action: "load", xml: atob("${xmlB64}") });
-          dbg("loaded", { len: ${xmlForLoad.length} });
-        }
-        if (data.event === "save") { postToEmbed({ action: "export", format: "xml" }); }
-        if (data.event === "export" && data.data) {
-          vscode.postMessage({ type: "drawio.saved", xml: data.data });
-        }
-        if (data.event === "exit") { vscode.postMessage({ type: "drawio.requestClose" }); }
-      } catch (e) { dbg("parse_error", String(e)); }
-    });
-    editor.addEventListener("load", () => { setTimeout(() => postToEmbed({ action: "status" }), 1500); });
-  </script>
-</body>
-</html>`;
     }
     getHtmlForWebview(webview) {
         const manifestCandidates = [
@@ -345,5 +274,4 @@ ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
     }
 }
 exports.RainaPanel = RainaPanel;
-// ---- Below is copied from webview-ui/raina-ui/src/lib/vscode.ts ----
 //# sourceMappingURL=RainaPanel.js.map

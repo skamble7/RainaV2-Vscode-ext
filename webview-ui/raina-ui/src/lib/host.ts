@@ -1,4 +1,3 @@
-
 // webview-ui/raina-ui/src/lib/host.ts
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -52,7 +51,10 @@ export type HostReq =
 
   // **NEW: Kind registry**
   | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
-  | { type: "registry:kind:get"; payload: { key: string } };
+  | { type: "registry:kind:get"; payload: { key: string } }
+
+  // **NEW: Draw.io panel launcher**
+  | { type: "raina.openDrawio"; payload: { title: string; xml: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");
@@ -76,4 +78,3 @@ export function useVSCodeMessages<T = any>(handler: (message: IncomingMessage<T>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }
-

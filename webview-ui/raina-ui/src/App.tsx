@@ -3,6 +3,8 @@ import WorkspaceLanding from "@/components/workspace/WorkspaceLanding";
 import WorkspaceDetail from "@/components/workspace-detail/WorkspaceDetail";
 import { useRainaStore } from "@/stores/useRainaStore";
 import { useVSCodeMessages } from "./lib/vscode";
+import { vscode } from "./lib/vscode";
+import { useEffect } from "react";
 
 export default function App() {
   const {
@@ -12,11 +14,29 @@ export default function App() {
     refreshRun,
   } = useRainaStore();
 
+  // --- Hydrate selection on first mount (survives full reloads) ---
+  useEffect(() => {
+    const saved = vscode.getState<{ currentWorkspaceId?: string; route?: string }>();
+    if (saved?.currentWorkspaceId) {
+      // only switch if store doesn't already have a selection
+      if (!currentWorkspaceId) {
+        switchWorkspace(saved.currentWorkspaceId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Persist selection whenever it changes ---
+  useEffect(() => {
+    const saved = vscode.getState<any>() || {};
+    vscode.setState({ ...saved, currentWorkspaceId });
+  }, [currentWorkspaceId]);
+
   // React to both generic bus events and dedicated step events
   useVSCodeMessages<any>((msg) => {
     const t = msg?.type;
     const p = msg?.payload ?? {};
-    
+
     if (t === "runs:step") {
       // Directly apply step deltas into the store; no HTTP roundtrip.
       applyStepEvent(p);
