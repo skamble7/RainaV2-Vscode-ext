@@ -21,9 +21,12 @@ export class DrawioPanel {
         case "drawio.saved": {
           const updatedXml = String(msg.xml ?? "");
           vscode.window.showInformationMessage("Draw.io diagram exported.");
-          // TODO: If you want to persist back to your artifact, post this to the main panel here.
+          // TODO: forward updatedXml back to main webview if you want to persist it.
           break;
         }
+        case "drawio.debug":
+          console.log("[DrawioPanel]", msg.kind, msg.data);
+          break;
         case "drawio.requestClose":
           panel.dispose();
           break;
@@ -56,7 +59,7 @@ export class DrawioPanel {
       font-src https: data:;
     `.replace(/\n/g, " ");
 
-    return /* html */ `<!doctype html>
+    return `<!doctype html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -72,13 +75,10 @@ export class DrawioPanel {
   <script>
     const vscode = acquireVsCodeApi();
     const editor = document.getElementById("editor");
-
-    function postToEmbed(message) {
-      editor.contentWindow.postMessage(JSON.stringify(message), "*");
-    }
+    function postToEmbed(message) { editor.contentWindow.postMessage(JSON.stringify(message), "*"); }
     function dbg(kind, data) { try { vscode.postMessage({ type: "drawio.debug", kind, data }); } catch {} }
 
-    // Robust UTF-8 base64 decode
+    // UTF-8 base64 decode
     function b64ToUtf8(b64) {
       try {
         const bin = atob(b64);
@@ -90,32 +90,114 @@ export class DrawioPanel {
       }
     }
 
-    // Normalize XML for Draw.io JSON codec:
-    //  - Ensure <mxGeometry ...> has as="geometry" (missing 'as' triggers "Could not add object mxGeometry")
+    // --- Normalization helpers ---
+    function ensureGeometryAsAttribute(doc) {
+      const geoms = doc.getElementsByTagName("mxGeometry");
+      for (let i = 0; i < geoms.length; i++) {
+        if (!geoms[i].getAttribute("as")) geoms[i].setAttribute("as", "geometry");
+      }
+    }
+
+    // Ensure root has:
+    //   <mxCell id="0"/>
+    //   <mxCell id="1" parent="0"/>
+    // and reparent any cells under 0 to 1 (layer).
+    function ensureRootAndLayer(doc) {
+      const model = doc.getElementsByTagName("mxGraphModel")[0];
+      if (!model) return;
+      const root = model.getElementsByTagName("root")[0];
+      if (!root) return;
+
+      const byId = new Map();
+      for (let i = 0; i < root.childNodes.length; i++) {
+        const n = root.childNodes[i];
+        if (n.nodeType === 1 && n.nodeName === "mxCell") {
+          const el = n;
+          const id = el.getAttribute("id");
+          if (id) byId.set(id, el);
+        }
+      }
+
+      // id="0"
+      let zero = byId.get("0");
+      if (!zero) {
+        zero = doc.createElement("mxCell");
+        zero.setAttribute("id", "0");
+        root.insertBefore(zero, root.firstChild);
+      } else {
+        zero.removeAttribute("parent");
+        zero.removeAttribute("vertex");
+        zero.removeAttribute("edge");
+        zero.removeAttribute("style");
+        zero.removeAttribute("value");
+        // remove any geometry on id=0
+        const g = zero.getElementsByTagName("mxGeometry")[0];
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+      }
+
+      // id="1" layer
+      let layer = byId.get("1");
+      if (!layer) {
+        layer = doc.createElement("mxCell");
+        layer.setAttribute("id", "1");
+        layer.setAttribute("parent", "0");
+        root.insertBefore(layer, zero.nextSibling);
+      } else {
+        layer.setAttribute("parent", "0");
+        layer.removeAttribute("vertex");
+        layer.removeAttribute("edge");
+        layer.removeAttribute("style");
+        layer.removeAttribute("value");
+        // remove any geometry on layer
+        const gs = layer.getElementsByTagName("mxGeometry");
+        for (let i = gs.length - 1; i >= 0; i--) gs[i].parentNode?.removeChild(gs[i]);
+        // make sure the order is 0 then 1 at top
+        if (layer.previousSibling !== zero) {
+          root.removeChild(layer);
+          root.insertBefore(layer, zero.nextSibling);
+        }
+      }
+
+      // Reparent any non-[0,1] cells that (wrongly) have parent="0" or missing parent
+      for (let i = 0; i < root.childNodes.length; i++) {
+        const n = root.childNodes[i];
+        if (n.nodeType !== 1 || n.nodeName !== "mxCell") continue;
+        const el = n;
+        const id = el.getAttribute("id");
+        if (id === "0" || id === "1") continue;
+        const p = el.getAttribute("parent");
+        if (!p || p === "0") el.setAttribute("parent", "1");
+      }
+    }
+
     function normalizeXml(xml) {
-      // add as="geometry" on self-closing <mxGeometry .../>
-      xml = xml.replace(/<mxGeometry\\b([^>]*?)\\/\\s*>/g, (m, attrs) => {
-        if (/\\bas\\s*=/.test(attrs)) return m;
-        return '<mxGeometry' + attrs + ' as="geometry"/>';
-      });
-      // add as="geometry" on normal <mxGeometry ...>
-      xml = xml.replace(/<mxGeometry\\b([^>]*?)>/g, (m, attrs) => {
-        if (/\\bas\\s*=/.test(attrs)) return m;
-        return '<mxGeometry' + attrs + ' as="geometry">';
-      });
-      return xml;
+      try {
+        const doc = new DOMParser().parseFromString(xml, "text/xml");
+        if (doc.getElementsByTagName("parsererror").length) {
+          const err = doc.getElementsByTagName("parsererror")[0]?.textContent || "unknown";
+          dbg("parsererror", err);
+          return xml; // fall back
+        }
+        ensureGeometryAsAttribute(doc);
+        ensureRootAndLayer(doc);
+        const out = new XMLSerializer().serializeToString(doc);
+        return out;
+      } catch (e) {
+        dbg("normalize_error", String(e));
+        return xml;
+      }
     }
 
     const RAW_XML = b64ToUtf8("${xmlB64}");
     const XML_TEXT = normalizeXml(RAW_XML);
+    dbg("xml_lengths", { raw: RAW_XML.length, normalized: XML_TEXT.length });
 
     let loadedOnce = false;
 
-    // Relay messages from the embed back to the extension / handle lifecycle
     window.addEventListener("message", (event) => {
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (!data) return;
+        if (!data || !data.event) return;
 
         if ((data.event === "init" || data.event === "ready") && !loadedOnce) {
           loadedOnce = true;
@@ -125,23 +207,14 @@ export class DrawioPanel {
           }, 0);
         }
 
-        if (data.event === "save") {
-          postToEmbed({ action: "export", format: "xml" });
-        }
-
-        if (data.event === "export" && data.data) {
-          vscode.postMessage({ type: "drawio.saved", xml: data.data });
-        }
-
-        if (data.event === "exit") {
-          vscode.postMessage({ type: "drawio.requestClose" });
-        }
+        if (data.event === "save") postToEmbed({ action: "export", format: "xml" });
+        if (data.event === "export" && data.data) vscode.postMessage({ type: "drawio.saved", xml: data.data });
+        if (data.event === "exit") vscode.postMessage({ type: "drawio.requestClose" });
       } catch (e) {
         dbg("parse_error", String(e));
       }
     });
 
-    // Nudge the iframe
     editor.addEventListener("load", () => {
       setTimeout(() => postToEmbed({ action: "status" }), 1000);
     });
