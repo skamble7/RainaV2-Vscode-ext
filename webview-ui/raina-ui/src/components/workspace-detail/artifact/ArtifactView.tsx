@@ -1,4 +1,3 @@
-// webview-ui/raina-ui/src/components/workspace-detail/artifact/ArtifactView.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState } from "react";
 import { useRainaStore } from "@/stores/useRainaStore";
@@ -357,19 +356,85 @@ function isUniformObjectArray(arr: any[]) {
   if (!keys.length) return false;
   return arr.every((r) => isPlainObject(r) && shallowSameKeys(Object.keys(r), keys));
 }
+
+/** Pretty inline renderer for scalars or small objects */
 function renderInline(v: any) {
   if (v === null || v === undefined) return <span className="text-neutral-500">—</span>;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
     return <span>{String(v)}</span>;
   return <code className="text-xs">{safeJSON(v)}</code>;
 }
+
+/** Table-cell renderer that understands arrays of objects */
 function renderCell(v: any) {
   if (v === null || v === undefined) return <span className="text-neutral-500">—</span>;
   if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
     return <span className="whitespace-pre-wrap">{String(v)}</span>;
-  if (Array.isArray(v))
+
+  if (Array.isArray(v)) {
+    if (v.length === 0) return <span className="text-neutral-500">—</span>;
+    const allObjects = v.every(isPlainObject);
+
+    // Render common "fields" pattern as chips: name:type?
+    if (allObjects && v[0] && ("name" in v[0]) && ("type" in v[0])) {
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {v.map((f: any, i: number) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-md bg-neutral-900 px-2 py-0.5 border border-neutral-800 text-[11px]"
+              title={safeJSON(f)}
+            >
+              <span className="font-medium">{String(f.name)}</span>
+              <span className="text-neutral-500">:</span>
+              <span className="font-mono">{String(f.type)}{f.nullable ? "?" : ""}</span>
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    // Generic array of objects -> tiny inline table
+    if (allObjects) {
+      const first = v[0] || {};
+      const keys = Object.keys(first);
+
+      // Prefer readable columns first
+      const prefOrder = ["name", "type", "nullable", "description", "id", "kind"];
+      const cols = [
+        ...prefOrder.filter((k) => keys.includes(k)),
+        ...keys.filter((k) => !prefOrder.includes(k)),
+      ].slice(0, 6); // cap to avoid very wide cells
+
+      return (
+        <div className="max-h-40 overflow-auto rounded-md border border-neutral-800">
+          <table className="min-w-full text-[11px]">
+            <thead className="bg-neutral-950 text-neutral-400">
+              <tr>
+                {cols.map((c) => (
+                  <th key={c} className="text-left px-2 py-1">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {v.map((row: any, i: number) => (
+                <tr key={i} className="border-t border-neutral-800">
+                  {cols.map((c) => (
+                    <td key={c} className="px-2 py-1 align-top">
+                      {renderCell(row[c])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // Primitive arrays
     return (
-      <span>
+      <span className="whitespace-pre-wrap">
         {v.map((x, i) => (
           <span key={i}>
             {String(x)}
@@ -378,5 +443,12 @@ function renderCell(v: any) {
         ))}
       </span>
     );
-  return <code className="text-[11px]">{safeJSON(v)}</code>;
+  }
+
+  // Fallback for objects: short JSON
+  if (isPlainObject(v)) {
+    return <code className="text-[11px]">{safeJSON(v)}</code>;
+  }
+
+  return <span className="whitespace-pre-wrap">{String(v)}</span>;
 }
