@@ -21,12 +21,27 @@ import Overview from "@/components/overview/Overview";
 import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
 import { Toaster } from "@/components/ui/toaster";
 
+// NEW: reuse same toggle UI as Workspaces
+import ViewToggle from "@/components/workspace/ViewToggle";
+
 /* ===== Root ===== */
 type Props = { workspaceId: string; onBack: () => void };
 
 export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   const { switchWorkspace, ui } = useRainaStore();
   const [discoverOpen, setDiscoverOpen] = useState(false);
+
+  // Artifacts view preference (grid | list), persisted like WorkspaceLanding
+  const [artifactsView, setArtifactsView] = useState<"grid" | "list">(() => {
+    try {
+      return (localStorage.getItem("raina:artifacts:view") as "grid" | "list") || "grid";
+    } catch {
+      return "grid";
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("raina:artifacts:view", artifactsView); } catch { /* ignore */ }
+  }, [artifactsView]);
 
   useEffect(() => { switchWorkspace(workspaceId); }, [workspaceId, switchWorkspace]);
 
@@ -45,11 +60,11 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
 
       {ui.tab === "artifacts" && (
         <div className="border-b border-neutral-800 shrink-0">
-          <TopFilterRow />
+          <TopFilterRow view={artifactsView} onChangeView={setArtifactsView} />
         </div>
       )}
 
-      <BodyTwoColumn workspaceId={workspaceId} />
+      <BodyTwoColumn workspaceId={workspaceId} view={artifactsView} />
 
       <DiscoverArtifactsDrawer
         workspaceId={workspaceId}
@@ -156,7 +171,13 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
 }
 
 /* ===== Top filter row ===== */
-function TopFilterRow() {
+function TopFilterRow({
+  view,
+  onChangeView,
+}: {
+  view: "grid" | "list";
+  onChangeView: (v: "grid" | "list") => void;
+}) {
   const { setQuery, toggleKind, counts, wsDoc } = useRainaStore();
   const c = counts();
 
@@ -175,10 +196,14 @@ function TopFilterRow() {
         ))}
       </div>
       <div className="flex-1" />
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-500" />
         <Input className="pl-8 w-64" placeholder="Search…" onChange={(e) => setQuery(e.target.value)} />
       </div>
+      {/* View toggle just like Workspaces */}
+      <ViewToggle view={view} onChange={onChangeView} />
+      {/* Kinds filter */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Kinds</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-72 overflow-auto">
@@ -194,7 +219,7 @@ function TopFilterRow() {
 }
 
 /* ===== Two-column body ===== */
-function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
+function BodyTwoColumn({ workspaceId, view }: { workspaceId: string; view: "grid" | "list" }) {
   const {
     ui, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
   } = useRainaStore();
@@ -232,16 +257,29 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
 
   const list = filteredArtifacts();
 
+  // Switch column proportions based on view:
+  //  - grid:   left fills, right 520px
+  //  - list:   left 420px, right fills (more space for details)
+  const colsClass =
+    view === "grid"
+      ? "lg:[grid-template-columns:minmax(0,1fr)_520px]"
+      : "lg:[grid-template-columns:420px_minmax(0,1fr)]";
+
   return (
     <div className="flex-1 overflow-hidden min-h-0">
-      <div className="max-w-[1400px] mx-auto w-full h-full px-4 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_520px] gap-4 min-h-0">
+      <div
+        className={[
+          "max-w-[1400px] mx-auto w-full h-full px-4 py-4 grid grid-cols-1 gap-4 min-h-0",
+          colsClass,
+        ].join(" ")}
+      >
         {/* Left column */}
         <div className="h-full overflow-auto pr-2 min-h-0">
           {loading && list.length === 0 ? (
             <div className="text-neutral-400 text-sm">Loading artifacts…</div>
           ) : list.length === 0 ? (
             <div className="text-neutral-400 text-sm">No artifacts match your filters.</div>
-          ) : (
+          ) : view === "grid" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
               {list.map((a) => {
                 const isSelected = selectedArtifactId === a.artifact_id;
@@ -270,6 +308,44 @@ function BodyTwoColumn({ workspaceId }: { workspaceId: string }) {
                   >
                     <div className="text-xs uppercase tracking-wide text-neutral-400">{a.kind}</div>
                     <div className="font-medium truncate">{a.name}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            // List view: compact rows to free space for right pane
+            <div className="flex flex-col gap-2">
+              {list.map((a) => {
+                const isSelected = selectedArtifactId === a.artifact_id;
+                return (
+                  <div
+                    key={a.artifact_id}
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                    className={[
+                      "rounded-xl border px-3 py-2 transition outline-none cursor-pointer",
+                      "bg-neutral-900/50 hover:bg-neutral-900",
+                      isSelected ? "border-neutral-700 ring-1 ring-neutral-600" : "border-neutral-800",
+                    ].join(" ")}
+                    onClick={async () => {
+                      await selectArtifact(a.artifact_id);
+                      await refreshArtifact(a.artifact_id);
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        await selectArtifact(a.artifact_id);
+                        await refreshArtifact(a.artifact_id);
+                      }
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] uppercase tracking-wide text-neutral-400 truncate">
+                        {a.kind}
+                      </div>
+                      <div className="font-medium truncate">{a.name}</div>
+                    </div>
                   </div>
                 );
               })}

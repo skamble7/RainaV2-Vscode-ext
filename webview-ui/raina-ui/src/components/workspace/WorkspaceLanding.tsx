@@ -5,6 +5,7 @@ import { callHost } from "@/lib/host";
 import ViewToggle from "./ViewToggle";
 import NewWorkspaceDrawer from "./NewWorkspaceDrawer";
 import WorkspaceCard from "./WorkspaceCard";
+import SettingsPanel from "./SettingsPanel";
 import { Separator } from "@/components/ui/separator";
 import WorkspaceDetail from "@/components/workspace-detail/WorkspaceDetail";
 
@@ -94,7 +95,17 @@ export default function WorkspaceLanding() {
             <h2 className="text-xl font-semibold">Your Workspaces</h2>
             <div className="flex items-center gap-2">
               <ViewToggle view={view} onChange={setView} />
-              {/* 👇 Wire the refresh */}
+              {/* ⚙️ New round settings gear that opens a panel */}
+              <SettingsPanel
+                onOpenCam={() => {
+                  // Wire later: host message to open CAM tab
+                  // callHost({ type: "open:cam:tab" });
+                }}
+                onOpenCapabilityPack={() => {
+                  // Wire later: host message to open Capability Pack tab
+                  // callHost({ type: "open:capabilityPack:tab" });
+                }}
+              />
               <NewWorkspaceDrawer onCreated={() => loadWorkspaces()} />
             </div>
           </div>
