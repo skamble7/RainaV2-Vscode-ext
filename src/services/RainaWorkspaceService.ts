@@ -139,7 +139,18 @@ export type KindRegistryItem = {
   }>;
 };
 
+export type ArtifactCategory = {
+  key: string;
+  name: string;
+  description?: string;
+  icon_svg?: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 const _kindCache: Record<string, KindRegistryItem | undefined> = Object.create(null);
+const _categoryCache: Record<string, ArtifactCategory | undefined> = Object.create(null);
 
 export const RainaWorkspaceService = {
   // ----------------- Workspaces -----------------
@@ -404,5 +415,24 @@ export const RainaWorkspaceService = {
     const data = await json<KindRegistryItem>(res);
     _kindCache[key] = data;
     return data;
+  },
+
+  // ----------------- Artifact Categories -----------------
+  async categoriesByKeys(keys: string[]): Promise<ArtifactCategory[]> {
+    const uniq = Array.from(new Set(keys.filter(Boolean)));
+    const missing = uniq.filter((k) => !_categoryCache[k]);
+    if (missing.length) {
+      const res = await fetch(`${ARTIFACT_BASE}/category/by-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: missing }),
+      });
+      if (!res.ok) throw new Error(`Failed to fetch categories (${res.status})`);
+      const arr = await json<ArtifactCategory[]>(res);
+      for (const c of arr || []) {
+        if (c?.key) _categoryCache[c.key] = c;
+      }
+    }
+    return uniq.map((k) => _categoryCache[k]).filter(Boolean) as ArtifactCategory[];
   },
 };

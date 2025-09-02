@@ -13,16 +13,12 @@ import { Search } from "lucide-react";
 import { useRainaStore } from "@/stores/useRainaStore";
 import ArtifactView from "./artifact/ArtifactView";
 
-// NEW: Runs tab
 import RunsTab from "@/components/runs/RunsTab";
-// NEW: Overview tab
 import Overview from "@/components/overview/Overview";
-// NEW: discover drawer + toaster
 import DiscoverArtifactsDrawer from "@/components/workspace-detail/forms/DiscoverArtifactsDrawer";
 import { Toaster } from "@/components/ui/toaster";
-
-// NEW: reuse same toggle UI as Workspaces
 import ViewToggle from "@/components/workspace/ViewToggle";
+import { callHost } from "@/lib/host";
 
 /* ===== Root ===== */
 type Props = { workspaceId: string; onBack: () => void };
@@ -31,7 +27,7 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   const { switchWorkspace, ui } = useRainaStore();
   const [discoverOpen, setDiscoverOpen] = useState(false);
 
-  // Artifacts view preference (grid | list), persisted like WorkspaceLanding
+  // Artifacts view preference (grid | list)
   const [artifactsView, setArtifactsView] = useState<"grid" | "list">(() => {
     try {
       return (localStorage.getItem("raina:artifacts:view") as "grid" | "list") || "grid";
@@ -75,7 +71,7 @@ export default function WorkspaceDetail({ workspaceId, onBack }: Props) {
   );
 }
 
-/* ===== Header ===== */
+/* ===== Header (unchanged) ===== */
 function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDiscover: () => void }) {
   const { wsDoc, loading, ui, setTab, updateWorkspaceMeta } = useRainaStore();
   const [editing, setEditing] = React.useState(false);
@@ -170,7 +166,7 @@ function HeaderBar({ onBack, onOpenDiscover }: { onBack: () => void; onOpenDisco
   );
 }
 
-/* ===== Top filter row ===== */
+/* ===== Top filter row (unchanged) ===== */
 function TopFilterRow({
   view,
   onChangeView,
@@ -196,14 +192,11 @@ function TopFilterRow({
         ))}
       </div>
       <div className="flex-1" />
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-2 top-2.5 h-4 w-4 text-neutral-500" />
         <Input className="pl-8 w-64" placeholder="Search…" onChange={(e) => setQuery(e.target.value)} />
       </div>
-      {/* View toggle just like Workspaces */}
       <ViewToggle view={view} onChange={onChangeView} />
-      {/* Kinds filter */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="outline" size="sm">Kinds</Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="max-h-72 overflow-auto">
@@ -218,48 +211,89 @@ function TopFilterRow({
   );
 }
 
-/* ===== Two-column body ===== */
+/* ===== Two-column body (icons added) ===== */
 function BodyTwoColumn({ workspaceId, view }: { workspaceId: string; view: "grid" | "list" }) {
   const {
-    ui, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId,
+    ui, loading, filteredArtifacts, selectArtifact, refreshArtifact, selectedArtifactId, wsDoc,
   } = useRainaStore();
 
-  if (ui.tab === "overview") {
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-[1400px] mx-auto px-4 py-6">
-          <Overview />
+  // --- Category icon loader/cacher in webview state ---
+  const [catIcons, setCatIcons] = useState<Record<string, string>>({});
+
+  // Derive category keys from kinds: "cam.diagram.context" -> "diagram"
+  const allCatKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const a of (wsDoc?.artifacts ?? [])) {
+      const k = (a?.kind || "").split(".")[1];
+      if (k) keys.add(k);
+    }
+    return Array.from(keys);
+  }, [wsDoc?.artifacts]);
+
+  useEffect(() => {
+    const missing = allCatKeys.filter((k) => !catIcons[k]);
+    if (!missing.length) return;
+    (async () => {
+      try {
+        const arr = await callHost<{ key: string; icon_svg?: string }[]>({
+          type: "categories:byKeys",
+          payload: { keys: missing },
+        });
+        const map: Record<string, string> = { ...catIcons };
+        (arr || []).forEach((c: any) => {
+          if (c?.key && typeof c.icon_svg === "string") map[c.key] = c.icon_svg;
+        });
+        setCatIcons(map);
+      } catch (e) {
+        // silent fail; icons are cosmetic
+        console.warn("[Artifacts] category icons fetch failed", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCatKeys.join("|")]);
+
+  const iconForKind = (kind?: string) => {
+    const key = (kind || "").split(".")[1];
+    const svg = (key && catIcons[key]) || DEFAULT_DOT_SVG;
+    return <span className="shrink-0 text-neutral-300" dangerouslySetInnerHTML={{ __html: svg }} />;
+  };
+
+  if (ui.tab !== "artifacts") {
+    if (ui.tab === "overview") {
+      return (
+        <div className="flex-1 overflow-auto">
+          <div className="max-w-[1400px] mx-auto px-4 py-6">
+            <Overview />
+          </div>
         </div>
-      </div>
-    );
-  }
-  if (ui.tab === "conversations") {
-    return (
-      <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
-        Conversations (agent threads) coming soon…
-      </div>
-    );
-  }
-  if (ui.tab === "runs") {
-    return (
-      <div className="flex-1 min-h-0">
-        <RunsTab workspaceId={workspaceId} />
-      </div>
-    );
-  }
-  if (ui.tab === "timeline") {
-    return (
-      <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
-        Timeline coming soon…
-      </div>
-    );
+      );
+    }
+    if (ui.tab === "conversations") {
+      return (
+        <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
+          Conversations (agent threads) coming soon…
+        </div>
+      );
+    }
+    if (ui.tab === "runs") {
+      return (
+        <div className="flex-1 min-h-0">
+          <RunsTab workspaceId={workspaceId} />
+        </div>
+      );
+    }
+    if (ui.tab === "timeline") {
+      return (
+        <div className="max-w-[1400px] mx-auto px-4 py-6 text-sm text-neutral-400">
+          Timeline coming soon…
+        </div>
+      );
+    }
   }
 
   const list = filteredArtifacts();
 
-  // Switch column proportions based on view:
-  //  - grid:   left fills, right 520px
-  //  - list:   left 420px, right fills (more space for details)
+  // Column proportions
   const colsClass =
     view === "grid"
       ? "lg:[grid-template-columns:minmax(0,1fr)_520px]"
@@ -306,14 +340,17 @@ function BodyTwoColumn({ workspaceId, view }: { workspaceId: string; view: "grid
                       }
                     }}
                   >
-                    <div className="text-xs uppercase tracking-wide text-neutral-400">{a.kind}</div>
-                    <div className="font-medium truncate">{a.name}</div>
+                    <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-400">
+                      {iconForKind(a.kind)}
+                      <span className="truncate">{a.kind}</span>
+                    </div>
+                    <div className="font-medium truncate mt-0.5">{a.name}</div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            // List view: compact rows to free space for right pane
+            // List view
             <div className="flex flex-col gap-2">
               {list.map((a) => {
                 const isSelected = selectedArtifactId === a.artifact_id;
@@ -341,8 +378,9 @@ function BodyTwoColumn({ workspaceId, view }: { workspaceId: string; view: "grid
                     }}
                   >
                     <div className="min-w-0">
-                      <div className="text-[11px] uppercase tracking-wide text-neutral-400 truncate">
-                        {a.kind}
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-neutral-400 truncate">
+                        {iconForKind(a.kind)}
+                        <span className="truncate">{a.kind}</span>
                       </div>
                       <div className="font-medium truncate">{a.name}</div>
                     </div>
@@ -363,3 +401,8 @@ function BodyTwoColumn({ workspaceId, view }: { workspaceId: string; view: "grid
     </div>
   );
 }
+
+const DEFAULT_DOT_SVG =
+  `<svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+     <circle cx="12" cy="12" r="3" fill="currentColor"/>
+   </svg>`;

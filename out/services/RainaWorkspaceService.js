@@ -37,6 +37,7 @@ function getEtag(h) {
     return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
 const _kindCache = Object.create(null);
+const _categoryCache = Object.create(null);
 exports.RainaWorkspaceService = {
     // ----------------- Workspaces -----------------
     async list() {
@@ -273,6 +274,26 @@ exports.RainaWorkspaceService = {
         const data = await json(res);
         _kindCache[key] = data;
         return data;
+    },
+    // ----------------- Artifact Categories -----------------
+    async categoriesByKeys(keys) {
+        const uniq = Array.from(new Set(keys.filter(Boolean)));
+        const missing = uniq.filter((k) => !_categoryCache[k]);
+        if (missing.length) {
+            const res = await fetch(`${ARTIFACT_BASE}/category/by-keys`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keys: missing }),
+            });
+            if (!res.ok)
+                throw new Error(`Failed to fetch categories (${res.status})`);
+            const arr = await json(res);
+            for (const c of arr || []) {
+                if (c?.key)
+                    _categoryCache[c.key] = c;
+            }
+        }
+        return uniq.map((k) => _categoryCache[k]).filter(Boolean);
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

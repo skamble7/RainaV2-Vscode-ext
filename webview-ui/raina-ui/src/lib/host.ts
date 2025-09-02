@@ -49,11 +49,14 @@ export type HostReq =
   // Capability registry (existing)
   | { type: "capability:pack:get"; payload: { key: string; version: string } }
 
-  // **NEW: Kind registry**
+  // **Kind registry**
   | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
   | { type: "registry:kind:get"; payload: { key: string } }
 
-  // **NEW: Draw.io panel launcher**
+  // **Categories (NEW)**
+  | { type: "categories:byKeys"; payload: { keys: string[] } }
+
+  // **Draw.io panel**
   | { type: "raina.openDrawio"; payload: { title: string; xml: string } };
 
 export function callHost<T>(req: HostReq): Promise<T> {
@@ -66,7 +69,7 @@ export function callHost<T>(req: HostReq): Promise<T> {
   return p;
 }
 
-// (useVSCodeMessages unchanged below)
+// useVSCodeMessages unchanged…
 export type OutgoingMessage<T = any> = { type: string; payload?: T };
 export type IncomingMessage<T = any> = { type: string; payload?: T };
 
