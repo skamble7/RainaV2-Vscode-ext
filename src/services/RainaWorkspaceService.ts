@@ -1,6 +1,8 @@
 /* eslint-disable curly */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//src/services/RainaWorkspaceService.ts
+
+// src/services/RainaWorkspaceService.ts
+
 export type RawWorkspace = {
   id?: string;
   _id?: string;
@@ -33,9 +35,9 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
   };
 }
 
-const API_BASE = "http://127.0.0.1:8010";       // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service (also hosts registry routes)
-const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
+const API_BASE = "http://127.0.0.1:8010";        // workspace-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011";   // artifact-service (also hosts registry routes)
+const DISCOVERY_BASE = "http://127.0.0.1:8013";  // discovery-service
 const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry
 
 type Json = any;
@@ -390,12 +392,136 @@ export const RainaWorkspaceService = {
     return await json(res);
   },
 
-  // ----------------- Capability registry -----------------
+  /* ======================= CAPABILITY REGISTRY (NEW) ======================= */
+
+  // ---------- Global capabilities ----------
+  async capabilityListAll(opts?: { q?: string; tag?: string; limit?: number; offset?: number }) {
+    const url = `${CAPABILITY_BASE}/capability/list/all${qs({
+      q: opts?.q,
+      tag: opts?.tag,
+      limit: opts?.limit ?? 100,
+      offset: opts?.offset ?? 0,
+    })}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to list capabilities (${res.status})`);
+    return await json(res); // { items, count }
+  },
+
+  async capabilityGet(id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(`Failed to get capability (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityCreate(body: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`Failed to create capability (${res.status}) ${txt}`);
+    return txt ? JSON.parse(txt) : undefined;
+  },
+
+  async capabilityUpdate(id: string, patch: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to update capability (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityDelete(id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete capability (${res.status})`);
+  },
+
+  // ---------- Capability packs ----------
+  async capabilityPacksList(opts?: { key?: string; q?: string; limit?: number; offset?: number }) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/packs${qs({
+      key: opts?.key,
+      q: opts?.q,
+      limit: opts?.limit ?? 50,
+      offset: opts?.offset ?? 0,
+    })}`);
+    if (!res.ok) throw new Error(`Failed to list packs (${res.status})`);
+    return await json(res);
+  },
+
   async capabilityPackGet(key: string, version: string) {
     if (!key || !version) throw new Error("key and version are required");
     const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch capability pack (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackCreate(body: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`Failed to create capability pack (${res.status}) ${txt}`);
+    return txt ? JSON.parse(txt) : undefined;
+  },
+
+  async capabilityPackUpdate(key: string, version: string, patch: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to update capability pack (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackDelete(key: string, version: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+      method: "DELETE",
+    });
+    if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete pack (${res.status})`);
+  },
+
+  async capabilityPackSetCapabilities(key: string, version: string, capability_ids: string[]) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/capabilities`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ capability_ids }),
+    });
+    if (!res.ok) throw new Error(`Failed to set capability IDs (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackAddPlaybook(key: string, version: string, playbook: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(playbook ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to add playbook (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackRemovePlaybook(key: string, version: string, playbook_id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/${encodeURIComponent(playbook_id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(`Failed to remove playbook (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackReorderSteps(key: string, version: string, playbook_id: string, order: string[]) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/reorder`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playbook_id, order }),
+    });
+    if (!res.ok) throw new Error(`Failed to reorder steps (${res.status})`);
     return await json(res);
   },
 

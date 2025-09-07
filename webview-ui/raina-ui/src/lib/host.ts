@@ -1,4 +1,3 @@
-// webview-ui/raina-ui/src/lib/host.ts
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { vscode } from "@/lib/vscode";
@@ -46,14 +45,28 @@ export type HostReq =
   | { type: "baseline:set"; payload: { workspaceId: string; inputs: any; ifAbsentOnly?: boolean; expectedVersion?: number } }
   | { type: "baseline:patch"; payload: { workspaceId: string; avc?: any; pss?: any; fssStoriesUpsert?: any[]; expectedVersion?: number } }
 
-  // Capability registry (existing)
+  // Capability registry
+  | { type: "capability:list"; payload?: { q?: string; tag?: string; limit?: number; offset?: number } }
+  | { type: "capability:get"; payload: { id: string } }
+  | { type: "capability:create"; payload: any }
+  | { type: "capability:update"; payload: { id: string; patch: any } }
+  | { type: "capability:delete"; payload: { id: string } }
+
   | { type: "capability:pack:get"; payload: { key: string; version: string } }
+  | { type: "capability:pack:list"; payload?: { key?: string; q?: string; limit?: number; offset?: number } }
+  | { type: "capability:pack:create"; payload: any }
+  | { type: "capability:pack:update"; payload: { key: string; version: string; patch: any } }
+  | { type: "capability:pack:delete"; payload: { key: string; version: string } }
+  | { type: "capability:pack:setCaps"; payload: { key: string; version: string; capability_ids: string[] } }
+  | { type: "capability:pack:addPlaybook"; payload: { key: string; version: string; playbook: any } }
+  | { type: "capability:pack:removePlaybook"; payload: { key: string; version: string; playbook_id: string } }
+  | { type: "capability:pack:reorderSteps"; payload: { key: string; version: string; playbook_id: string; order: string[] } }
 
   // **Kind registry**
   | { type: "registry:kinds:list"; payload?: { limit?: number; offset?: number } }
   | { type: "registry:kind:get"; payload: { key: string } }
 
-  // **Categories (NEW)**
+  // **Categories (existing NEW)**
   | { type: "categories:byKeys"; payload: { keys: string[] } }
 
   // **Draw.io panel**
@@ -62,7 +75,6 @@ export type HostReq =
 export function callHost<T>(req: HostReq): Promise<T> {
   if (!vscode.available()) throw new Error("VS Code API not available");
   ensureListener();
-
   const token = crypto.randomUUID();
   const p = new Promise<T>((resolve, reject) => pending.set(token, { resolve, reject }));
   vscode.postMessage({ ...req, token });

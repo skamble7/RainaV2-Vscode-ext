@@ -8,6 +8,7 @@ import WorkspaceCard from "./WorkspaceCard";
 import SettingsPanel from "./SettingsPanel";
 import { Separator } from "@/components/ui/separator";
 import WorkspaceDetail from "@/components/workspace-detail/WorkspaceDetail";
+import CapabilityPacksManager from "@/components/capability/CapabilityPacksManager";
 
 type WorkspaceListItem = {
   id: string;
@@ -20,6 +21,9 @@ type WorkspaceListItem = {
 export default function WorkspaceLanding() {
   const currentWorkspaceId = useRainaStore((s) => s.currentWorkspaceId);
   const switchWorkspace = useRainaStore((s) => s.switchWorkspace);
+
+  // NEW: top-level tabs
+  const [pane, setPane] = useState<"workspaces" | "capabilityPacks">("workspaces");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +86,24 @@ export default function WorkspaceLanding() {
     );
   }, [loading, error, workspaces, view]);
 
+  if (pane === "capabilityPacks") {
+    return (
+      <div className="h-full w-full">
+        <div className="flex items-center justify-between p-6 pb-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPane("workspaces")}
+              className="text-sm text-neutral-400 hover:text-neutral-200"
+            >
+              ← Back to Workspaces
+            </button>
+          </div>
+        </div>
+        <CapabilityPacksManager />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full">
       {currentWorkspaceId ? (
@@ -95,16 +117,10 @@ export default function WorkspaceLanding() {
             <h2 className="text-xl font-semibold">Your Workspaces</h2>
             <div className="flex items-center gap-2">
               <ViewToggle view={view} onChange={setView} />
-              {/* ⚙️ New round settings gear that opens a panel */}
+              {/* ⚙️ Settings → open Capability Packs tab */}
               <SettingsPanel
-                onOpenCam={() => {
-                  // Wire later: host message to open CAM tab
-                  // callHost({ type: "open:cam:tab" });
-                }}
-                onOpenCapabilityPack={() => {
-                  // Wire later: host message to open Capability Pack tab
-                  // callHost({ type: "open:capabilityPack:tab" });
-                }}
+                onOpenCam={() => { /* reserved for CAM manager later */ }}
+                onOpenCapabilityPack={() => setPane("capabilityPacks")}
               />
               <NewWorkspaceDrawer onCreated={() => loadWorkspaces()} />
             </div>

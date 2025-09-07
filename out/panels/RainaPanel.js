@@ -58,7 +58,6 @@ class RainaPanel {
         const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
-            // 👇 prevents VS Code from destroying the webview when you switch tabs
             retainContextWhenHidden: true,
         });
         RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
@@ -83,7 +82,14 @@ class RainaPanel {
             };
             try {
                 switch (type) {
-                    // ===== NEW: categories by keys =====
+                    case "packDesigner:open": {
+                        const { key, version } = payload ?? {};
+                        const { PackDesignerPanel } = require("./PackDesignerPanel");
+                        PackDesignerPanel.createOrShow(this.extensionUri, { key, version });
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    // ---------- Artifact Categories ----------
                     case "categories:byKeys": {
                         const { keys = [] } = payload ?? {};
                         const fn = ensure("categoriesByKeys");
@@ -91,7 +97,107 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    /* existing cases below … */
+                    // ---------- Capability: Global ----------
+                    case "capability:list": {
+                        const { q, tag, limit = 100, offset = 0 } = payload ?? {};
+                        const list = ensure("capabilityListAll");
+                        const data = await list({ q, tag, limit, offset });
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:get": {
+                        const { id } = payload ?? {};
+                        const get = ensure("capabilityGet");
+                        const data = await get(id);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:create": {
+                        const body = payload ?? {};
+                        const create = ensure("capabilityCreate");
+                        const data = await create(body);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:update": {
+                        const { id, patch } = payload ?? {};
+                        const update = ensure("capabilityUpdate");
+                        const data = await update(id, patch);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:delete": {
+                        const { id } = payload ?? {};
+                        const del = ensure("capabilityDelete");
+                        await del(id);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    // ---------- Capability Packs ----------
+                    case "capability:pack:get": {
+                        const { key, version } = payload ?? {};
+                        const getPack = ensure("capabilityPackGet");
+                        const data = await getPack(key, version);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:list": {
+                        const { key, q, limit = 50, offset = 0 } = payload ?? {};
+                        const listPacks = ensure("capabilityPacksList");
+                        const data = await listPacks({ key, q, limit, offset });
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:create": {
+                        const body = payload ?? {};
+                        const createPack = ensure("capabilityPackCreate");
+                        const data = await createPack(body);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:update": {
+                        const { key, version, patch } = payload ?? {};
+                        const updatePack = ensure("capabilityPackUpdate");
+                        const data = await updatePack(key, version, patch);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:delete": {
+                        const { key, version } = payload ?? {};
+                        const deletePack = ensure("capabilityPackDelete");
+                        await deletePack(key, version);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    case "capability:pack:setCaps": {
+                        const { key, version, capability_ids } = payload ?? {};
+                        const setCaps = ensure("capabilityPackSetCapabilities");
+                        const data = await setCaps(key, version, capability_ids);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:addPlaybook": {
+                        const { key, version, playbook } = payload ?? {};
+                        const addPb = ensure("capabilityPackAddPlaybook");
+                        const data = await addPb(key, version, playbook);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:removePlaybook": {
+                        const { key, version, playbook_id } = payload ?? {};
+                        const rmPb = ensure("capabilityPackRemovePlaybook");
+                        const data = await rmPb(key, version, playbook_id);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:reorderSteps": {
+                        const { key, version, playbook_id, order } = payload ?? {};
+                        const reorder = ensure("capabilityPackReorderSteps");
+                        const data = await reorder(key, version, playbook_id, order);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---------- Registry kinds ----------
                     case "registry:kinds:list": {
                         const { limit = 200, offset = 0 } = payload ?? {};
                         const listKinds = ensure("registryKindsList");
@@ -106,7 +212,7 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ... rest of switch unchanged (workspaces, runs, baseline, artifacts, drawio) ...
+                    // ---------- Existing workspace / runs / artifacts (unchanged) ----------
                     case "workspace:list": {
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.list();
                         reply(true, data);
@@ -169,13 +275,6 @@ class RainaPanel {
                         const data = await patchBaselineInputs(workspaceId, {
                             avc, pss, fss_stories_upsert: fssStoriesUpsert, expectedVersion,
                         });
-                        reply(true, data);
-                        break;
-                    }
-                    case "capability:pack:get": {
-                        const { key, version } = payload ?? {};
-                        const getPack = ensure("capabilityPackGet");
-                        const data = await getPack(key, version);
                         reply(true, data);
                         break;
                     }
