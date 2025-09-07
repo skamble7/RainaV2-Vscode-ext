@@ -1,4 +1,6 @@
 "use strict";
+/* eslint-disable curly */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RainaWorkspaceService = void 0;
 function normalizeWorkspace(w) {
@@ -15,9 +17,9 @@ function normalizeWorkspace(w) {
     };
 }
 const API_BASE = "http://127.0.0.1:8010"; // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011"; // artifact-service (also hosts registry routes)
 const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
-const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry
 // --- helpers ---
 async function json(res) {
     const text = await res.text();
@@ -36,6 +38,8 @@ function qs(params) {
 function getEtag(h) {
     return h.get("ETag") ?? h.get("etag") ?? undefined;
 }
+const _kindCache = Object.create(null);
+const _categoryCache = Object.create(null);
 exports.RainaWorkspaceService = {
     // ----------------- Workspaces -----------------
     async list() {
@@ -243,7 +247,64 @@ exports.RainaWorkspaceService = {
             throw new Error(`Failed to patch baseline (${res.status})`);
         return await json(res);
     },
-    // ----------------- Capability registry (NEW) -----------------
+    /* ======================= CAPABILITY REGISTRY (NEW) ======================= */
+    // ---------- Global capabilities ----------
+    async capabilityListAll(opts) {
+        const url = `${CAPABILITY_BASE}/capability/list/all${qs({
+            q: opts?.q,
+            tag: opts?.tag,
+            limit: opts?.limit ?? 100,
+            offset: opts?.offset ?? 0,
+        })}`;
+        const res = await fetch(url);
+        if (!res.ok)
+            throw new Error(`Failed to list capabilities (${res.status})`);
+        return await json(res); // { items, count }
+    },
+    async capabilityGet(id) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`);
+        if (!res.ok)
+            throw new Error(`Failed to get capability (${res.status})`);
+        return await json(res);
+    },
+    async capabilityCreate(body) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body ?? {}),
+        });
+        const txt = await res.text();
+        if (!res.ok)
+            throw new Error(`Failed to create capability (${res.status}) ${txt}`);
+        return txt ? JSON.parse(txt) : undefined;
+    },
+    async capabilityUpdate(id, patch) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch ?? {}),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to update capability (${res.status})`);
+        return await json(res);
+    },
+    async capabilityDelete(id) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!(res.ok || res.status === 204))
+            throw new Error(`Failed to delete capability (${res.status})`);
+    },
+    // ---------- Capability packs ----------
+    async capabilityPacksList(opts) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/packs${qs({
+            key: opts?.key,
+            q: opts?.q,
+            limit: opts?.limit ?? 50,
+            offset: opts?.offset ?? 0,
+        })}`);
+        if (!res.ok)
+            throw new Error(`Failed to list packs (${res.status})`);
+        return await json(res);
+    },
     async capabilityPackGet(key, version) {
         if (!key || !version)
             throw new Error("key and version are required");
@@ -252,6 +313,112 @@ exports.RainaWorkspaceService = {
         if (!res.ok)
             throw new Error(`Failed to fetch capability pack (${res.status})`);
         return await json(res);
+    },
+    async capabilityPackCreate(body) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body ?? {}),
+        });
+        const txt = await res.text();
+        if (!res.ok)
+            throw new Error(`Failed to create capability pack (${res.status}) ${txt}`);
+        return txt ? JSON.parse(txt) : undefined;
+    },
+    async capabilityPackUpdate(key, version, patch) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch ?? {}),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to update capability pack (${res.status})`);
+        return await json(res);
+    },
+    async capabilityPackDelete(key, version) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+            method: "DELETE",
+        });
+        if (!(res.ok || res.status === 204))
+            throw new Error(`Failed to delete pack (${res.status})`);
+    },
+    async capabilityPackSetCapabilities(key, version, capability_ids) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/capabilities`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ capability_ids }),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to set capability IDs (${res.status})`);
+        return await json(res);
+    },
+    async capabilityPackAddPlaybook(key, version, playbook) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(playbook ?? {}),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to add playbook (${res.status})`);
+        return await json(res);
+    },
+    async capabilityPackRemovePlaybook(key, version, playbook_id) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/${encodeURIComponent(playbook_id)}`, {
+            method: "DELETE",
+        });
+        if (!res.ok)
+            throw new Error(`Failed to remove playbook (${res.status})`);
+        return await json(res);
+    },
+    async capabilityPackReorderSteps(key, version, playbook_id, order) {
+        const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/reorder`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ playbook_id, order }),
+        });
+        if (!res.ok)
+            throw new Error(`Failed to reorder steps (${res.status})`);
+        return await json(res);
+    },
+    // ----------------- Kind registry -----------------
+    async registryKindsList(limit = 200, offset = 0) {
+        const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
+        if (!res.ok)
+            throw new Error(`Failed to fetch kinds list (${res.status})`);
+        return await json(res);
+    },
+    async registryKindGet(key) {
+        if (!key)
+            throw new Error("Kind key required");
+        const cached = _kindCache[key];
+        if (cached)
+            return cached;
+        const res = await fetch(`${ARTIFACT_BASE}/registry/kinds/${encodeURIComponent(key)}`);
+        if (!res.ok)
+            throw new Error(`Failed to fetch kind ${key} (${res.status})`);
+        const data = await json(res);
+        _kindCache[key] = data;
+        return data;
+    },
+    // ----------------- Artifact Categories -----------------
+    async categoriesByKeys(keys) {
+        const uniq = Array.from(new Set(keys.filter(Boolean)));
+        const missing = uniq.filter((k) => !_categoryCache[k]);
+        if (missing.length) {
+            const res = await fetch(`${ARTIFACT_BASE}/category/by-keys`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keys: missing }),
+            });
+            if (!res.ok)
+                throw new Error(`Failed to fetch categories (${res.status})`);
+            const arr = await json(res);
+            for (const c of arr || []) {
+                if (c?.key)
+                    _categoryCache[c.key] = c;
+            }
+        }
+        return uniq.map((k) => _categoryCache[k]).filter(Boolean);
     },
 };
 //# sourceMappingURL=RainaWorkspaceService.js.map

@@ -79,10 +79,10 @@ export default function RunsTab({ workspaceId }: Props) {
   }, [workspaceId]);
 
   useEffect(() => {
-  if (!selectedRunId && runs.length > 0) {
-    selectRun(runs[0].run_id); // most recent first in your list
-  }
-}, [runs, selectedRunId, selectRun]);
+    if (!selectedRunId && runs.length > 0) {
+      selectRun(runs[0].run_id); // most recent first in your list
+    }
+  }, [runs, selectedRunId, selectRun]);
 
   async function refreshBaseline() {
     setBlBusy(true);
@@ -102,8 +102,8 @@ export default function RunsTab({ workspaceId }: Props) {
     const needle = q.trim().toLowerCase();
     if (!needle) return runs;
     return runs.filter((r) => {
-      const title = (r.title || r.result_summary?.title || r.run_id).toLowerCase();
-      const desc = (r.description || r.result_summary?.description || "").toLowerCase();
+      const title = (r.title || r.run_id).toLowerCase();
+      const desc = (r.description || "").toLowerCase();
       const hay = `${title} ${desc} ${r.playbook_id} ${r.status}`;
       return hay.includes(needle);
     });

@@ -60,7 +60,7 @@ function activate(context) {
             RainaPanel_1.RainaPanel.postToWebview({ type: "runs:step", payload });
         }
     };
-    // NEW: create the stream with onEvent to forward events to the webview
+    // create the stream with onEvent to forward events to the webview
     notifStream = new NotificationStream_1.NotificationStream({
         url: wsUrl,
         channel: output,

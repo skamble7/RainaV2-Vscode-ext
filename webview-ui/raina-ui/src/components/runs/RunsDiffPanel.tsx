@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// webview-ui/raina-ui/src/components/runs/RunsDiffPanel.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +27,15 @@ type Props = {
   baseline: BaselineInfo;
 };
 
+/** Simple stable string hash (djb2) so we can detect unchanged vs updated without backend fingerprints */
+function hashOf(v: unknown): string {
+  const s = typeof v === "string" ? v : JSON.stringify(v ?? null);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+  // Convert to unsigned 32-bit and base36 for compactness
+  return (h >>> 0).toString(36);
+}
+
 export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseline }: Props) {
   // selectors
   const [leftRunId, setLeftRunId] = useState<string | null>(null);
@@ -46,13 +57,14 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
     setRightRunId(right);
 
     const lastPromoted = baseline.last_promoted_run_id || null;
+
     const earliestBaseline = runs
       .filter((r: any) => r.status === "completed" && r.strategy === "baseline")
-      .sort((a, b) => (a.result_summary?.started_at ?? "").localeCompare(b.result_summary?.started_at ?? ""))[0]?.run_id;
+      .sort((a, b) => (a.run_summary?.started_at ?? "").localeCompare(b.run_summary?.started_at ?? ""))[0]?.run_id;
 
     const earliestCompleted = runs
       .filter((r: any) => r.status === "completed")
-      .sort((a, b) => (a.result_summary?.started_at ?? "").localeCompare(b.result_summary?.started_at ?? ""))[0]?.run_id;
+      .sort((a, b) => (a.run_summary?.started_at ?? "").localeCompare(b.run_summary?.started_at ?? ""))[0]?.run_id;
 
     const left =
       (lastPromoted && lastPromoted !== right ? lastPromoted : null) ||
@@ -63,31 +75,33 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
     setLeftRunId(left);
   }, [runs, selectedRunId, baseline.last_promoted_run_id]);
 
-  // load artifacts for a run
+  // Build an artifact map for a run from run.run_artifacts (no network lookups)
   const loadSide = async (rid: string | null) => {
     if (!rid) return {} as Record<string, Artifact>;
     const run = await callHost<DiscoveryRun>({ type: "runs:get", payload: { runId: rid } });
-    const ids: string[] = (run as any)?.result_summary?.artifact_ids ?? [];
+
+    const list: Array<any> = Array.isArray((run as any).run_artifacts) ? (run as any).run_artifacts : [];
     const map: Record<string, Artifact> = {};
-    for (const id of ids) {
-      try {
-        const { data } = await callHost<{ data: Artifact }>({
-          type: "artifact:get",
-          payload: { workspaceId, artifactId: id },
-        });
-        if (!data) continue;
-        map[nkOf(data)] = {
-          artifact_id: data.artifact_id,
-          workspace_id: (data as any).workspace_id,
-          kind: data.kind,
-          name: data.name,
-          natural_key: data.natural_key,
-          fingerprint: (data as any).fingerprint,
-          data: data.data,
-        };
-      } catch {
-        /* ignore this artifact */
-      }
+
+    for (const a of list) {
+      if (!a || !a.kind || !a.name) continue;
+      const natural_key = (a.natural_key as string) || `${String(a.kind)}:${String(a.name)}`.toLowerCase();
+
+      // Compose a best-effort Artifact shape the rest of the UI understands
+      const item: Artifact = {
+        artifact_id: (a as any).artifact_id || "", // not persisted yet — may be empty
+        workspace_id: (a as any).workspace_id || "",
+        kind: a.kind,
+        name: a.name,
+        natural_key,
+        // Use a stable hash of the meaningful payload to detect unchanged
+        fingerprint:
+          (a as any).fingerprint ||
+          hashOf({ kind: a.kind, name: a.name, data: a.data }),
+        data: a.data,
+      };
+
+      map[natural_key] = item;
     }
     return map;
   };
@@ -115,11 +129,21 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
   const rightArt = selectedNk ? rightArtifacts[selectedNk] : undefined;
 
   const leftJson = useMemo(
-    () => JSON.stringify(leftArt ? { kind: leftArt.kind, name: leftArt.name, fingerprint: leftArt.fingerprint, data: leftArt.data } : {}, null, 2),
+    () =>
+      JSON.stringify(
+        leftArt ? { kind: leftArt.kind, name: leftArt.name, fingerprint: leftArt.fingerprint, data: leftArt.data } : {},
+        null,
+        2
+      ),
     [leftArt]
   );
   const rightJson = useMemo(
-    () => JSON.stringify(rightArt ? { kind: rightArt.kind, name: rightArt.name, fingerprint: rightArt.fingerprint, data: rightArt.data } : {}, null, 2),
+    () =>
+      JSON.stringify(
+        rightArt ? { kind: rightArt.kind, name: rightArt.name, fingerprint: rightArt.fingerprint, data: rightArt.data } : {},
+        null,
+        2
+      ),
     [rightArt]
   );
 
@@ -149,7 +173,7 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
               <option value="">(none)</option>
               {runs.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.title || r.result_summary?.title || r.run_id}
+                  {r.title || r.run_id}
                 </option>
               ))}
             </select>
@@ -164,7 +188,7 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
               <option value="">(none)</option>
               {runs.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.title || r.result_summary?.title || r.run_id}
+                  {r.title || r.run_id}
                 </option>
               ))}
             </select>
@@ -200,7 +224,7 @@ export default function RunsDiffPanel({ workspaceId, runs, selectedRunId, baseli
 
           {!selectedNk ? (
             <div className="mt-3 text-sm text-neutral-400">
-              Select an <b>Updated</b> item to view JSON diff (or diagram).
+              Select an item to view JSON diff (or diagram).
             </div>
           ) : (
             <div className="mt-3">

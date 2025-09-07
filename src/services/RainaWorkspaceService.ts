@@ -1,6 +1,8 @@
 /* eslint-disable curly */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//src/services/RainaWorkspaceService.ts
+
+// src/services/RainaWorkspaceService.ts
+
 export type RawWorkspace = {
   id?: string;
   _id?: string;
@@ -33,10 +35,12 @@ function normalizeWorkspace(w: RawWorkspace): BackendWorkspace {
   };
 }
 
-const API_BASE = "http://127.0.0.1:8010";       // workspace-service
-const ARTIFACT_BASE = "http://127.0.0.1:8011";  // artifact-service
-const DISCOVERY_BASE = "http://127.0.0.1:8013"; // discovery-service
-const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry (NEW)
+const API_BASE = "http://127.0.0.1:8010";        // workspace-service
+const ARTIFACT_BASE = "http://127.0.0.1:8011";   // artifact-service (also hosts registry routes)
+const DISCOVERY_BASE = "http://127.0.0.1:8013";  // discovery-service
+const CAPABILITY_BASE = "http://127.0.0.1:8012"; // capability-registry
+
+type Json = any;
 
 // --- helpers ---
 async function json<T = any>(res: Response): Promise<T> {
@@ -64,22 +68,52 @@ export type DiscoveryRun = {
   run_id: string;
   workspace_id: string;
   playbook_id: string;
-  model_id?: string;
   status: RunStatus;
-  started_at?: string;
-  finished_at?: string;
 
-  // NEW for baseline UI
-  inputs?: any;
-  input_diff?: any;
-  strategy?: string;
-
-  result_summary?: any;
+  // Labels
   title?: string | null;
   description?: string | null;
+
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+
+  // Inputs + options snapshot
+  inputs?: any;
+  options?: any;
+
+  // Diffing and classification
+  input_fingerprint?: string | null;
+  input_diff?: any;
+  strategy?: "baseline" | "delta";
+
+  // Artifacts produced by this run (full objects)
+  run_artifacts?: any[];
+
+  // Classification against baseline using natural keys
+  artifacts_diff?: {
+    new: string[];
+    updated: string[];
+    unchanged: string[];
+    retired: string[];
+  };
+
+  // Aggregated counts
+  deltas?: {
+    counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>>;
+  };
+
+  // Minimal execution summary (no redundant IDs)
+  run_summary?: {
+    validations?: any[];
+    logs?: string[];
+    started_at?: string;
+    completed_at?: string;
+    duration_s?: number | string | { $numberDouble: string };
+  };
+
+  // Error if the run failed
   error?: string | null;
-  artifacts?: any[];
-  deltas?: { counts?: Partial<Record<"new" | "updated" | "unchanged" | "retired" | "deleted", number>> };
 };
 
 export type StartDiscoveryResponse = {
@@ -87,12 +121,38 @@ export type StartDiscoveryResponse = {
   run_id: string;
   workspace_id: string;
   playbook_id: string;
-  model_id?: string;
   dry_run?: boolean;
   request_id?: string;
   correlation_id?: string;
   message?: string;
 };
+
+/** --- Registry result types --- */
+export type KindRegistryItem = {
+  _id: string;             // e.g. "cam.asset.api_inventory"
+  title: string;
+  summary?: string;
+  category?: string;       // e.g. "asset"
+  status?: "active" | "deprecated" | string;
+  latest_schema_version?: string;
+  schema_versions?: Array<{
+    version: string;
+    json_schema: Json;
+  }>;
+};
+
+export type ArtifactCategory = {
+  key: string;
+  name: string;
+  description?: string;
+  icon_svg?: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+const _kindCache: Record<string, KindRegistryItem | undefined> = Object.create(null);
+const _categoryCache: Record<string, ArtifactCategory | undefined> = Object.create(null);
 
 export const RainaWorkspaceService = {
   // ----------------- Workspaces -----------------
@@ -332,12 +392,173 @@ export const RainaWorkspaceService = {
     return await json(res);
   },
 
-  // ----------------- Capability registry (NEW) -----------------
+  /* ======================= CAPABILITY REGISTRY (NEW) ======================= */
+
+  // ---------- Global capabilities ----------
+  async capabilityListAll(opts?: { q?: string; tag?: string; limit?: number; offset?: number }) {
+    const url = `${CAPABILITY_BASE}/capability/list/all${qs({
+      q: opts?.q,
+      tag: opts?.tag,
+      limit: opts?.limit ?? 100,
+      offset: opts?.offset ?? 0,
+    })}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to list capabilities (${res.status})`);
+    return await json(res); // { items, count }
+  },
+
+  async capabilityGet(id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(`Failed to get capability (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityCreate(body: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`Failed to create capability (${res.status}) ${txt}`);
+    return txt ? JSON.parse(txt) : undefined;
+  },
+
+  async capabilityUpdate(id: string, patch: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to update capability (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityDelete(id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete capability (${res.status})`);
+  },
+
+  // ---------- Capability packs ----------
+  async capabilityPacksList(opts?: { key?: string; q?: string; limit?: number; offset?: number }) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/packs${qs({
+      key: opts?.key,
+      q: opts?.q,
+      limit: opts?.limit ?? 50,
+      offset: opts?.offset ?? 0,
+    })}`);
+    if (!res.ok) throw new Error(`Failed to list packs (${res.status})`);
+    return await json(res);
+  },
+
   async capabilityPackGet(key: string, version: string) {
     if (!key || !version) throw new Error("key and version are required");
     const url = `${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch capability pack (${res.status})`);
     return await json(res);
+  },
+
+  async capabilityPackCreate(body: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    const txt = await res.text();
+    if (!res.ok) throw new Error(`Failed to create capability pack (${res.status}) ${txt}`);
+    return txt ? JSON.parse(txt) : undefined;
+  },
+
+  async capabilityPackUpdate(key: string, version: string, patch: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to update capability pack (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackDelete(key: string, version: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}`, {
+      method: "DELETE",
+    });
+    if (!(res.ok || res.status === 204)) throw new Error(`Failed to delete pack (${res.status})`);
+  },
+
+  async capabilityPackSetCapabilities(key: string, version: string, capability_ids: string[]) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/capabilities`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ capability_ids }),
+    });
+    if (!res.ok) throw new Error(`Failed to set capability IDs (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackAddPlaybook(key: string, version: string, playbook: any) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(playbook ?? {}),
+    });
+    if (!res.ok) throw new Error(`Failed to add playbook (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackRemovePlaybook(key: string, version: string, playbook_id: string) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/${encodeURIComponent(playbook_id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(`Failed to remove playbook (${res.status})`);
+    return await json(res);
+  },
+
+  async capabilityPackReorderSteps(key: string, version: string, playbook_id: string, order: string[]) {
+    const res = await fetch(`${CAPABILITY_BASE}/capability/pack/${encodeURIComponent(key)}/${encodeURIComponent(version)}/playbooks/reorder`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playbook_id, order }),
+    });
+    if (!res.ok) throw new Error(`Failed to reorder steps (${res.status})`);
+    return await json(res);
+  },
+
+  // ----------------- Kind registry -----------------
+  async registryKindsList(limit = 200, offset = 0) {
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds${qs({ limit, offset })}`);
+    if (!res.ok) throw new Error(`Failed to fetch kinds list (${res.status})`);
+    return await json<KindRegistryItem[]>(res);
+  },
+
+  async registryKindGet(key: string): Promise<KindRegistryItem> {
+    if (!key) throw new Error("Kind key required");
+    const cached = _kindCache[key];
+    if (cached) return cached;
+    const res = await fetch(`${ARTIFACT_BASE}/registry/kinds/${encodeURIComponent(key)}`);
+    if (!res.ok) throw new Error(`Failed to fetch kind ${key} (${res.status})`);
+    const data = await json<KindRegistryItem>(res);
+    _kindCache[key] = data;
+    return data;
+  },
+
+  // ----------------- Artifact Categories -----------------
+  async categoriesByKeys(keys: string[]): Promise<ArtifactCategory[]> {
+    const uniq = Array.from(new Set(keys.filter(Boolean)));
+    const missing = uniq.filter((k) => !_categoryCache[k]);
+    if (missing.length) {
+      const res = await fetch(`${ARTIFACT_BASE}/category/by-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: missing }),
+      });
+      if (!res.ok) throw new Error(`Failed to fetch categories (${res.status})`);
+      const arr = await json<ArtifactCategory[]>(res);
+      for (const c of arr || []) {
+        if (c?.key) _categoryCache[c.key] = c;
+      }
+    }
+    return uniq.map((k) => _categoryCache[k]).filter(Boolean) as ArtifactCategory[];
   },
 };

@@ -34,11 +34,12 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RainaPanel = void 0;
-//src/panels/RainaPanel.ts
+// src/panels/RainaPanel.ts
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const RainaWorkspaceService_1 = require("../services/RainaWorkspaceService");
+const DrawioPanel_1 = require("./DrawioPanel");
 class RainaPanel {
     static currentPanel;
     panel;
@@ -57,6 +58,7 @@ class RainaPanel {
         const panel = vscode.window.createWebviewPanel("raina", "Raina", column, {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media", "raina-ui")],
+            retainContextWhenHidden: true,
         });
         RainaPanel.currentPanel = new RainaPanel(panel, extensionUri);
     }
@@ -80,7 +82,137 @@ class RainaPanel {
             };
             try {
                 switch (type) {
-                    // ---- Workspace ----
+                    case "packDesigner:open": {
+                        const { key, version } = payload ?? {};
+                        const { PackDesignerPanel } = require("./PackDesignerPanel");
+                        PackDesignerPanel.createOrShow(this.extensionUri, { key, version });
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    // ---------- Artifact Categories ----------
+                    case "categories:byKeys": {
+                        const { keys = [] } = payload ?? {};
+                        const fn = ensure("categoriesByKeys");
+                        const data = await fn(keys);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---------- Capability: Global ----------
+                    case "capability:list": {
+                        const { q, tag, limit = 100, offset = 0 } = payload ?? {};
+                        const list = ensure("capabilityListAll");
+                        const data = await list({ q, tag, limit, offset });
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:get": {
+                        const { id } = payload ?? {};
+                        const get = ensure("capabilityGet");
+                        const data = await get(id);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:create": {
+                        const body = payload ?? {};
+                        const create = ensure("capabilityCreate");
+                        const data = await create(body);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:update": {
+                        const { id, patch } = payload ?? {};
+                        const update = ensure("capabilityUpdate");
+                        const data = await update(id, patch);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:delete": {
+                        const { id } = payload ?? {};
+                        const del = ensure("capabilityDelete");
+                        await del(id);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    // ---------- Capability Packs ----------
+                    case "capability:pack:get": {
+                        const { key, version } = payload ?? {};
+                        const getPack = ensure("capabilityPackGet");
+                        const data = await getPack(key, version);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:list": {
+                        const { key, q, limit = 50, offset = 0 } = payload ?? {};
+                        const listPacks = ensure("capabilityPacksList");
+                        const data = await listPacks({ key, q, limit, offset });
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:create": {
+                        const body = payload ?? {};
+                        const createPack = ensure("capabilityPackCreate");
+                        const data = await createPack(body);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:update": {
+                        const { key, version, patch } = payload ?? {};
+                        const updatePack = ensure("capabilityPackUpdate");
+                        const data = await updatePack(key, version, patch);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:delete": {
+                        const { key, version } = payload ?? {};
+                        const deletePack = ensure("capabilityPackDelete");
+                        await deletePack(key, version);
+                        reply(true, { ok: true });
+                        break;
+                    }
+                    case "capability:pack:setCaps": {
+                        const { key, version, capability_ids } = payload ?? {};
+                        const setCaps = ensure("capabilityPackSetCapabilities");
+                        const data = await setCaps(key, version, capability_ids);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:addPlaybook": {
+                        const { key, version, playbook } = payload ?? {};
+                        const addPb = ensure("capabilityPackAddPlaybook");
+                        const data = await addPb(key, version, playbook);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:removePlaybook": {
+                        const { key, version, playbook_id } = payload ?? {};
+                        const rmPb = ensure("capabilityPackRemovePlaybook");
+                        const data = await rmPb(key, version, playbook_id);
+                        reply(true, data);
+                        break;
+                    }
+                    case "capability:pack:reorderSteps": {
+                        const { key, version, playbook_id, order } = payload ?? {};
+                        const reorder = ensure("capabilityPackReorderSteps");
+                        const data = await reorder(key, version, playbook_id, order);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---------- Registry kinds ----------
+                    case "registry:kinds:list": {
+                        const { limit = 200, offset = 0 } = payload ?? {};
+                        const listKinds = ensure("registryKindsList");
+                        const data = await listKinds(limit, offset);
+                        reply(true, data);
+                        break;
+                    }
+                    case "registry:kind:get": {
+                        const { key } = payload ?? {};
+                        const getKind = ensure("registryKindGet");
+                        const data = await getKind(key);
+                        reply(true, data);
+                        break;
+                    }
+                    // ---------- Existing workspace / runs / artifacts (unchanged) ----------
                     case "workspace:list": {
                         const data = await RainaWorkspaceService_1.RainaWorkspaceService.list();
                         reply(true, data);
@@ -103,7 +235,6 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Runs ----
                     case "runs:list": {
                         const { workspaceId, limit, offset } = payload ?? {};
                         const listRuns = ensure("listRuns");
@@ -131,14 +262,10 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Baseline ----
                     case "baseline:set": {
                         const { workspaceId, inputs, ifAbsentOnly, expectedVersion } = payload ?? {};
                         const setBaselineInputs = ensure("setBaselineInputs");
-                        const data = await setBaselineInputs(workspaceId, inputs, {
-                            ifAbsentOnly,
-                            expectedVersion,
-                        });
+                        const data = await setBaselineInputs(workspaceId, inputs, { ifAbsentOnly, expectedVersion });
                         reply(true, data);
                         break;
                     }
@@ -146,23 +273,11 @@ class RainaPanel {
                         const { workspaceId, avc, pss, fssStoriesUpsert, expectedVersion } = payload ?? {};
                         const patchBaselineInputs = ensure("patchBaselineInputs");
                         const data = await patchBaselineInputs(workspaceId, {
-                            avc,
-                            pss,
-                            fss_stories_upsert: fssStoriesUpsert,
-                            expectedVersion,
+                            avc, pss, fss_stories_upsert: fssStoriesUpsert, expectedVersion,
                         });
                         reply(true, data);
                         break;
                     }
-                    // ---- Capability registry (NEW) ----
-                    case "capability:pack:get": {
-                        const { key, version } = payload ?? {};
-                        const getPack = ensure("capabilityPackGet");
-                        const data = await getPack(key, version);
-                        reply(true, data);
-                        break;
-                    }
-                    // ---- Artifacts ----
                     case "artifact:get": {
                         const { workspaceId, artifactId } = payload ?? {};
                         const out = await RainaWorkspaceService_1.RainaWorkspaceService.getArtifact(workspaceId, artifactId);
@@ -199,13 +314,12 @@ class RainaPanel {
                         reply(true, data);
                         break;
                     }
-                    // ---- Draw.io panel ----
                     case "raina.openDrawio": {
                         const { title, xml } = payload ?? {};
-                        this.openDrawioPanel(title || "Sequence Diagram", String(xml ?? ""));
+                        DrawioPanel_1.DrawioPanel.open(title || "Diagram", String(xml ?? ""));
+                        reply(true, { ok: true });
                         break;
                     }
-                    // ---- Misc / dev pings ----
                     case "hello": {
                         reply(true, { ok: true });
                         break;
@@ -220,84 +334,7 @@ class RainaPanel {
             }
         });
     }
-    // ... rest of file (Draw.io + getHtml) unchanged ...
-    openDrawioPanel(title, xml) {
-        // unchanged
-        const panel = vscode.window.createWebviewPanel("rainaDrawio", title, vscode.ViewColumn.Active, {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-        });
-        panel.webview.html = this.getDrawioHtml(panel.webview, xml);
-        panel.webview.onDidReceiveMessage((msg) => {
-            if (msg?.type === "drawio.saved") {
-                const updatedXml = String(msg.xml ?? "");
-                this.panel.webview.postMessage({
-                    type: "drawio.saved",
-                    payload: { title, xml: updatedXml },
-                });
-                vscode.window.showInformationMessage("Draw.io diagram exported.");
-            }
-            else if (msg?.type === "drawio.requestClose") {
-                panel.dispose();
-            }
-        });
-    }
-    getDrawioHtml(webview, xml) {
-        // unchanged
-        const hasMx = typeof xml === "string" && /<mxfile[\s>]/i.test(xml);
-        const MIN_XML = `<mxfile modified="${new Date().toISOString()}" agent="raina" version="20.6.3">
-  <diagram name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram>
-</mxfile>`;
-        const xmlForLoad = hasMx ? xml : MIN_XML;
-        const xmlB64 = Buffer.from(xmlForLoad, "utf8").toString("base64");
-        const EMBED_URL = "https://embed.diagrams.net/?embed=1&ui=atlas&spin=1&proto=json&saveandexit=1&noexit=1";
-        const csp = `
-    default-src 'none';
-    img-src ${webview.cspSource} https: data:;
-    frame-src https://embed.diagrams.net https://app.diagrams.net;
-    script-src ${webview.cspSource} 'unsafe-inline';
-    style-src ${webview.cspSource} 'unsafe-inline';
-    connect-src https:;
-    font-src https: data:;
-  `.replace(/\n/g, " ");
-        return `<!doctype html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Draw.io</title>
-  <style>html,body,iframe{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:#0a0a0a}</style>
-</head>
-<body>
-  <iframe id="editor" src="${EMBED_URL}" allow="clipboard-read; clipboard-write"></iframe>
-  <script>
-    const vscode = acquireVsCodeApi();
-    const editor = document.getElementById("editor");
-    function postToEmbed(message) { editor.contentWindow.postMessage(JSON.stringify(message), "*"); }
-    function dbg(kind, data) { vscode.postMessage({ type: "drawio.debug", kind, data }); }
-    window.addEventListener("message", (event) => {
-      try {
-        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (!data || !data.event) return;
-        if (data.event === "init" || data.event === "ready") {
-          postToEmbed({ action: "load", xml: atob("${xmlB64}") });
-          dbg("loaded", { len: ${xmlForLoad.length} });
-        }
-        if (data.event === "save") { postToEmbed({ action: "export", format: "xml" }); }
-        if (data.event === "export" && data.data) {
-          vscode.postMessage({ type: "drawio.saved", xml: data.data });
-        }
-        if (data.event === "exit") { vscode.postMessage({ type: "drawio.requestClose" }); }
-      } catch (e) { dbg("parse_error", String(e)); }
-    });
-    editor.addEventListener("load", () => { setTimeout(() => postToEmbed({ action: "status" }), 1500); });
-  </script>
-</body>
-</html>`;
-    }
     getHtmlForWebview(webview) {
-        // unchanged
         const manifestCandidates = [
             path.join(this.extensionUri.fsPath, "media", "raina-ui", ".vite", "manifest.json"),
             path.join(this.extensionUri.fsPath, "media", "raina-ui", "manifest.json"),
@@ -337,5 +374,4 @@ ${styleUri ? `<link rel="stylesheet" href="${styleUri}">` : ""}
     }
 }
 exports.RainaPanel = RainaPanel;
-// ---- Below is copied from webview-ui/raina-ui/src/lib/vscode.ts ----
 //# sourceMappingURL=RainaPanel.js.map

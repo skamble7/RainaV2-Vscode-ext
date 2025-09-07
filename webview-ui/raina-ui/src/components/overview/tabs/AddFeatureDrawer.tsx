@@ -157,7 +157,7 @@ export default function AddFeatureDrawer({ open, onOpenChange, defaultStory, onR
           validate: true,
           dry_run: false,
           ...(inferred.pack_key ? { pack_key: inferred.pack_key } : { pack_key: "svc-micro" }),
-          ...(inferred.pack_version ? { pack_version: inferred.pack_version } : { pack_version: "v1.2" }),
+          ...(inferred.pack_version ? { pack_version: inferred.pack_version } : { pack_version: "v1.4" }),
           ...(inferred.model ? { model: inferred.model } : { model: "openai:gpt-4o-mini" }),
         },
       };

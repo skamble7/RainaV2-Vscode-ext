@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   };
 
-  // NEW: create the stream with onEvent to forward events to the webview
+  // create the stream with onEvent to forward events to the webview
   notifStream = new NotificationStream({
     url: wsUrl!,
     channel: output!,
@@ -119,3 +119,4 @@ export function deactivate() {
   output?.dispose();
   output = null;
 }
+  

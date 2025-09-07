@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-//webview-ui/raina-ui/src/components/runs/utils.ts
+// webview-ui/raina-ui/src/components/runs/utils.ts
 
 export type Artifact = {
   artifact_id: string;
@@ -25,14 +25,32 @@ export type BaselineInfo = {
   last_promoted_run_id?: string | null;
 };
 
+/**
+ * Counts extractor aligned to the new DiscoveryRun model:
+ * - Prefer run.deltas.counts (authoritative)
+ * - Fallback to compute from run.artifacts_diff (arrays of NKs)
+ */
 export function countsOf(run: any): DeltaCounts {
-  const c = run?.artifacts_diff?.counts ?? run?.deltas?.counts ?? {};
+  const direct = run?.deltas?.counts;
+  if (direct && typeof direct === "object") {
+    return {
+      new: Number(direct.new ?? 0),
+      updated: Number(direct.updated ?? 0),
+      unchanged: Number(direct.unchanged ?? 0),
+      retired: Number(direct.retired ?? 0),
+      deleted: Number(direct.deleted ?? 0),
+    };
+  }
+
+  const ad = run?.artifacts_diff || {};
+  const len = (x: any) => (Array.isArray(x) ? x.length : 0);
+
   return {
-    new: c.new ?? 0,
-    updated: c.updated ?? 0,
-    unchanged: c.unchanged ?? 0,
-    retired: c.retired ?? 0,
-    deleted: c.deleted ?? 0,
+    new: len(ad.new),
+    updated: len(ad.updated),
+    unchanged: len(ad.unchanged),
+    retired: len(ad.retired),
+    deleted: len(ad.deleted),
   };
 }
 
@@ -47,7 +65,10 @@ export function kindAndName(nk: string): { kind: string; name: string } {
   return { kind: nk.slice(0, i), name: nk.slice(i + 1) };
 }
 
-// Compute left↔right diff using artifact natural keys + fingerprint/id equality.
+/**
+ * Compute left↔right diff using artifact natural keys + fingerprint/id equality.
+ * Inputs are maps keyed by natural key (nk): Record<nk, Artifact>
+ */
 export function computeDiff(left: Record<string, any>, right: Record<string, any>) {
   const leftKeys = new Set(Object.keys(left));
   const rightKeys = new Set(Object.keys(right));
